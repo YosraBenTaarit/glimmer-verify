@@ -170,6 +170,18 @@ def test_openrouter_provider_pinning():
         BackendConfig.from_env({**base, "OPENROUTER_ALLOW_FALLBACKS": "maybe"})
 
 
+def test_reasoning_budget_config():
+    base = {"BACKEND": "openrouter", "OPENROUTER_API_KEY": "k"}
+    assert BackendConfig.from_env({**base, "GLIMMER_REASONING_EFFORT": "Low"}).reasoning_effort == "low"
+    cfg = BackendConfig.from_env({**base, "GLIMMER_MAX_TOKENS": "12000", "GLIMMER_REASONING_MAX_TOKENS": "8000"})
+    assert cfg.reasoning_max_tokens == 8000
+    for bad in ({"GLIMMER_REASONING_EFFORT": "extreme"},
+                {"GLIMMER_REASONING_EFFORT": "low", "GLIMMER_REASONING_MAX_TOKENS": "100"},
+                {"GLIMMER_MAX_TOKENS": "4096", "GLIMMER_REASONING_MAX_TOKENS": "4096"}):
+        with pytest.raises(ConfigError):
+            BackendConfig.from_env({**base, **bad})
+
+
 def test_dotenv_fallback_without_python_dotenv(tmp_path, monkeypatch):
     import sys
 

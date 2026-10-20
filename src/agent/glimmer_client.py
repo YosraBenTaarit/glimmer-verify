@@ -22,6 +22,7 @@ LOCAL_DEFAULT_URLS = {"vllm": "http://localhost:8000/v1", "sglang": "http://loca
 
 BACKENDS = ("openrouter", "local_server")
 SERVER_KINDS = ("vllm", "sglang")
+REASONING_EFFORTS = ("minimal", "low", "medium", "high")
 
 
 class ConfigError(ValueError):
@@ -102,6 +103,10 @@ class BackendConfig:
     # quantization), so load-balancing across providers both defeats prefix caching and confounds results.
     provider_order: tuple[str, ...] = ()
     allow_fallbacks: bool = True
+    # OpenRouter only: reasoning tokens count against max_tokens, so an unbounded scratchpad can consume the
+    # whole budget and leave no room for the answer (finish_reason="length", empty content).
+    reasoning_effort: str | None = None
+    reasoning_max_tokens: int | None = None
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "BackendConfig":
@@ -133,6 +138,14 @@ class BackendConfig:
             fallbacks = env.get("OPENROUTER_ALLOW_FALLBACKS", "true").strip().lower()
             if fallbacks not in ("true", "false", "1", "0", "yes", "no"):
                 raise ConfigError(f"OPENROUTER_ALLOW_FALLBACKS={fallbacks!r} is not a boolean")
+            effort = env.get("GLIMMER_REASONING_EFFORT", "").strip().lower() or None
+            if effort is not None and effort not in REASONING_EFFORTS:
+                raise ConfigError(f"GLIMMER_REASONING_EFFORT must be one of {REASONING_EFFORTS}, got {effort!r}")
+            reasoning_max = _optional_int(env, "GLIMMER_REASONING_MAX_TOKENS", None)
+            if effort is not None and reasoning_max is not None:
+                raise ConfigError("set at most one of GLIMMER_REASONING_EFFORT and GLIMMER_REASONING_MAX_TOKENS")
+            if reasoning_max is not None and reasoning_max >= sampling["max_tokens"]:
+                raise ConfigError("GLIMMER_REASONING_MAX_TOKENS must be below GLIMMER_MAX_TOKENS to leave room for the answer")
             return cls(
                 backend=backend,
                 server_kind="openrouter",
@@ -143,6 +156,8 @@ class BackendConfig:
                 extra_headers=headers,
                 provider_order=order,
                 allow_fallbacks=fallbacks in ("true", "1", "yes"),
+                reasoning_effort=effort,
+                reasoning_max_tokens=reasoning_max,
                 **sampling,
             )
 
@@ -259,6 +274,10 @@ class GlimmerClient:
             extra_body: dict[str, Any] = {"usage": {"include": True}}
             if cfg.provider_order:
                 extra_body["provider"] = {"order": list(cfg.provider_order), "allow_fallbacks": cfg.allow_fallbacks}
+            if cfg.reasoning_effort is not None:
+                extra_body["reasoning"] = {"effort": cfg.reasoning_effort}
+            elif cfg.reasoning_max_tokens is not None:
+                extra_body["reasoning"] = {"max_tokens": cfg.reasoning_max_tokens}
             kwargs["extra_body"] = extra_body
 
         content: list[str] = []
