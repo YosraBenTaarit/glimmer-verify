@@ -283,6 +283,9 @@ class ProofRepairAgent:
                 "completion_tokens": completion.completion_tokens,
                 "finish_reason": completion.finish_reason,
                 "reasoning_chars": len(completion.reasoning),
+                "response_id": completion.response_id,
+                "provider": completion.provider,
+                "cost_usd": completion.cost_usd,
                 "telemetry": row,
             })
             if task_dir is not None and check.source is not None:
@@ -297,6 +300,8 @@ class ProofRepairAgent:
                     if completion.cached_tokens is not None and completion.prompt_tokens
                     else ""
                 )
+                + (f", {completion.provider}" if completion.provider else "")
+                + (f", ${completion.cost_usd:.4f}" if completion.cost_usd is not None else "")
             )
 
             if check.outcome == "proved":
@@ -422,6 +427,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         hit = summary.get("client_prefix_hit_rate_turn2plus")
         if hit is not None:
             print(f"client prefix-cache hit rate (turns >= 2): {hit:.1%}", file=sys.stderr)
+        if summary.get("total_cost_usd"):
+            print(f"reported cost: ${summary['total_cost_usd']:.4f}; turns by provider: {summary['turns_by_provider']}",
+                  file=sys.stderr)
     return 0 if proved == len(results) else 1
 
 

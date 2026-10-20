@@ -32,7 +32,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -55,6 +55,7 @@ TURN_FIELDS = [
     "prompt_tokens", "completion_tokens", "cached_tokens", "client_prefix_hit_rate",
     "server_prefix_hit_rate", "server_kv_cache_usage_peak", "server_preemptions_delta", "server_ttft_mean_s",
     "lean_ok", "lean_elapsed_s", "lean_errors", "finish_reason",
+    "response_id", "served_model", "provider", "cost_usd",
 ]
 TASK_FIELDS = ["run_id", "task_id", "mode", "proved", "attempts", "max_attempts", "outcomes"]
 SERVER_SAMPLE_FIELDS = ["t_s", "phase", "kv_cache_usage", "requests_running", "requests_waiting", "preemptions_total"]
@@ -365,6 +366,10 @@ class MetricsCollector:
             "lean_elapsed_s": result.elapsed_s if result is not None else None,
             "lean_errors": len(result.errors) if result is not None else None,
             "finish_reason": completion.finish_reason,
+            "response_id": completion.response_id,
+            "served_model": getattr(completion, "served_model", None),
+            "provider": getattr(completion, "provider", None),
+            "cost_usd": getattr(completion, "cost_usd", None),
         }
         self.turn_rows.append(row)
         self._turns.writerow({k: _fmt(v) for k, v in row.items()})
@@ -455,6 +460,8 @@ def summarize(turn_rows: Sequence[Mapping[str, Any]], task_rows: Sequence[Mappin
         "median_ttft_s_by_turn": {str(t): statistics.median(v) for t, v in sorted(by_turn.items())},
         "total_prompt_tokens": sum(_num(r.get("prompt_tokens")) or 0 for r in turn_rows),
         "total_completion_tokens": sum(_num(r.get("completion_tokens")) or 0 for r in turn_rows),
+        "total_cost_usd": sum(_num(r.get("cost_usd")) or 0 for r in turn_rows),
+        "turns_by_provider": dict(Counter(r.get("provider") or "unknown" for r in turn_rows)),
     }
 
 

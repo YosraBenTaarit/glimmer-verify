@@ -30,13 +30,30 @@ class ConfigError(ValueError):
 
 def load_dotenv_if_present(path: str | os.PathLike[str] | None = None) -> None:
     """Load ``.env`` (repo root by default) without overriding variables already set."""
+    dotenv_path = Path(path) if path is not None else Path(__file__).resolve().parents[2] / ".env"
+    if not dotenv_path.is_file():
+        return
     try:
         from dotenv import load_dotenv
     except ImportError:
-        return
-    dotenv_path = Path(path) if path is not None else Path(__file__).resolve().parents[2] / ".env"
-    if dotenv_path.is_file():
+        _load_simple_dotenv(dotenv_path)
+    else:
         load_dotenv(dotenv_path, override=False)
+
+
+def _load_simple_dotenv(path: Path) -> None:
+    """``KEY=VALUE`` lines, ``#`` comments, optional ``export`` and surrounding quotes; no interpolation."""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        if key:
+            os.environ.setdefault(key, value)
 
 
 def _metrics_url_from_base(base_url: str) -> str:
@@ -81,6 +98,10 @@ class BackendConfig:
     timeout_s: float = 600.0
     max_http_retries: int = 4
     extra_headers: Mapping[str, str] = field(default_factory=dict)
+    # OpenRouter only: provider routing. Each provider keeps its own prompt cache (and may serve a different
+    # quantization), so load-balancing across providers both defeats prefix caching and confounds results.
+    provider_order: tuple[str, ...] = ()
+    allow_fallbacks: bool = True
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "BackendConfig":
@@ -108,6 +129,10 @@ class BackendConfig:
                 headers["HTTP-Referer"] = env["OPENROUTER_APP_URL"]
             if env.get("OPENROUTER_APP_TITLE"):
                 headers["X-Title"] = env["OPENROUTER_APP_TITLE"]
+            order = tuple(p.strip() for p in env.get("OPENROUTER_PROVIDER_ORDER", "").split(",") if p.strip())
+            fallbacks = env.get("OPENROUTER_ALLOW_FALLBACKS", "true").strip().lower()
+            if fallbacks not in ("true", "false", "1", "0", "yes", "no"):
+                raise ConfigError(f"OPENROUTER_ALLOW_FALLBACKS={fallbacks!r} is not a boolean")
             return cls(
                 backend=backend,
                 server_kind="openrouter",
@@ -116,6 +141,8 @@ class BackendConfig:
                 model=env.get("OPENROUTER_MODEL", "").strip() or OPENROUTER_DEFAULT_MODEL,
                 metrics_url=None,
                 extra_headers=headers,
+                provider_order=order,
+                allow_fallbacks=fallbacks in ("true", "1", "yes"),
                 **sampling,
             )
 
@@ -146,6 +173,9 @@ class ChatCompletionResult:
     ttft_s: float
     e2e_s: float
     chunk_gaps_s: list[float]
+    served_model: str | None = None
+    provider: str | None = None
+    cost_usd: float | None = None
 
     @property
     def tpot_s(self) -> float:
@@ -226,7 +256,10 @@ class GlimmerClient:
         if cfg.seed is not None:
             kwargs["seed"] = cfg.seed
         if cfg.backend == "openrouter":
-            kwargs["extra_body"] = {"usage": {"include": True}}
+            extra_body: dict[str, Any] = {"usage": {"include": True}}
+            if cfg.provider_order:
+                extra_body["provider"] = {"order": list(cfg.provider_order), "allow_fallbacks": cfg.allow_fallbacks}
+            kwargs["extra_body"] = extra_body
 
         content: list[str] = []
         reasoning: list[str] = []
@@ -234,6 +267,8 @@ class GlimmerClient:
         usage: Any = None
         finish_reason: str | None = None
         response_id: str | None = None
+        served_model: str | None = None
+        provider: str | None = None
 
         t_start = time.perf_counter()
         stream = self._client.chat.completions.create(**kwargs)
@@ -241,6 +276,8 @@ class GlimmerClient:
             for chunk in stream:
                 now = time.perf_counter()
                 response_id = response_id or _get(chunk, "id")
+                served_model = served_model or _get(chunk, "model")
+                provider = provider or _get(chunk, "provider")
                 chunk_usage = _get(chunk, "usage")
                 if chunk_usage is not None:
                     usage = chunk_usage
@@ -263,6 +300,7 @@ class GlimmerClient:
 
         details = _get(usage, "prompt_tokens_details")
         cached = _get(details, "cached_tokens")
+        cost = _get(usage, "cost")
         return ChatCompletionResult(
             content="".join(content),
             reasoning="".join(reasoning),
@@ -274,4 +312,7 @@ class GlimmerClient:
             ttft_s=(arrivals[0] - t_start) if arrivals else float("nan"),
             e2e_s=t_end - t_start,
             chunk_gaps_s=[b - a for a, b in zip(arrivals, arrivals[1:])],
+            served_model=served_model,
+            provider=provider,
+            cost_usd=float(cost) if cost is not None else None,
         )

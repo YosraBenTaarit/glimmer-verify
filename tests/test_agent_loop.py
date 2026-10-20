@@ -2,12 +2,13 @@
 
 import csv
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from src.agent import prompts
-from src.agent.glimmer_client import BackendConfig, ChatCompletionResult, ConfigError
+from src.agent.glimmer_client import BackendConfig, ChatCompletionResult, ConfigError, load_dotenv_if_present
 from src.agent.lean_checker import LeanCheckResult, LeanDiagnostic
 from src.agent.proof_repair_agent import ProofRepairAgent, load_manifest
 from src.telemetry.metrics_collector import MetricsCollector
@@ -157,3 +158,32 @@ def test_backend_config_toggle():
         BackendConfig.from_env({"BACKEND": "openrouter"})
     with pytest.raises(ConfigError):
         BackendConfig.from_env({"BACKEND": "tpu"})
+
+
+def test_openrouter_provider_pinning():
+    base = {"BACKEND": "openrouter", "OPENROUTER_API_KEY": "k"}
+    assert BackendConfig.from_env(base).provider_order == ()
+    cfg = BackendConfig.from_env({**base, "OPENROUTER_PROVIDER_ORDER": " deepinfra, together ",
+                                  "OPENROUTER_ALLOW_FALLBACKS": "false"})
+    assert cfg.provider_order == ("deepinfra", "together") and cfg.allow_fallbacks is False
+    with pytest.raises(ConfigError):
+        BackendConfig.from_env({**base, "OPENROUTER_ALLOW_FALLBACKS": "maybe"})
+
+
+def test_dotenv_fallback_without_python_dotenv(tmp_path, monkeypatch):
+    import sys
+
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "# comment\nBACKEND=openrouter\nOPENROUTER_API_KEY= sk-test \nexport OPENROUTER_MODEL='openrouter/free'\n"
+        "GLIMMER_TEST_PRESET=from_file\n",
+        encoding="utf-8",
+    )
+    for key in ("BACKEND", "OPENROUTER_API_KEY", "OPENROUTER_MODEL"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("GLIMMER_TEST_PRESET", "from_shell")
+    monkeypatch.setitem(sys.modules, "dotenv", None)
+    load_dotenv_if_present(env_file)
+    cfg = BackendConfig.from_env()
+    assert cfg.api_key == "sk-test" and cfg.model == "openrouter/free"
+    assert os.environ["GLIMMER_TEST_PRESET"] == "from_shell"
