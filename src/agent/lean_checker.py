@@ -446,7 +446,7 @@ class LeanChecker:
         self.ensure_built()
         self.scratch_dir.mkdir(parents=True, exist_ok=True)
         safe_tag = re.sub(r"[^A-Za-z0-9_]+", "_", tag)
-        path = self.scratch_dir / f"Candidate_{safe_tag}.lean"
+        path = self.scratch_dir / f"Candidate_p{os.getpid()}_{safe_tag}.lean"
         body = source.rstrip("\n") + "\n"
         line_count = body.count("\n")
         audit_cmds = "".join(f"#print axioms {name}\n" for name in theorems)
