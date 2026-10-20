@@ -126,13 +126,46 @@ def test_forbidden_proof_is_rejected():
     t = LeanTemplate.from_text(TEMPLATE)
     with pytest.raises(TemplateMismatch, match="native_decide"):
         t.extract_proofs(TEMPLATE.replace("  sorry", "  native_decide"))
-    with pytest.raises(TemplateMismatch, match="Docs that mention sorry"):
-        t.extract_proofs(TEMPLATE.replace("sorry", "omega"))
     smuggled = TEMPLATE.replace("  sorry\n\ntheorem b", "  simp\n\ntheorem b").replace(
         "  sorry\n\nend", "  omega\ntheorem sneaky : True := trivial\n\nend"
     )
     with pytest.raises(TemplateMismatch, match="indented less"):
         t.extract_proofs(smuggled)
+
+
+def test_comments_may_differ():
+    t = LeanTemplate.from_text(TEMPLATE)
+    candidate = (
+        TEMPLATE.replace("/-! Docs that mention sorry are not holes. -/\n", "")
+        .replace("  sorry\n\ntheorem b", "  -- n + 0 reduces to n\n  simp\n\ntheorem b", 1)
+        .replace("  sorry\n\nend", "  omega /- arithmetic -/\n\nend", 1)
+    )
+    proofs = t.extract_proofs(candidate)
+    assert [p.strip() for p in proofs] == ["simp", "omega"]
+    assert t.fill(proofs).startswith(TEMPLATE.split("theorem a")[0])
+    with pytest.raises(TemplateMismatch, match="sorry"):
+        t.extract_proofs(TEMPLATE.replace("  sorry", "  -- done\n  sorry"))
+
+
+TERM_A = "theorem a (n : Nat) : n + 0 = n :=\n  Nat.add_zero n\n"
+TERM_B = "theorem b (n : Nat) (h : n < 4) : n < 5 :=\n  have h2 : n < 4 := h\n  Nat.lt_succ_of_lt h2\n"
+
+
+def term_mode_candidate() -> str:
+    head, _, rest = TEMPLATE.partition("theorem a")
+    return head + TERM_A + "\n" + TERM_B + "\nend X\n"
+
+
+def test_term_mode_proof_is_wrapped():
+    t = LeanTemplate.from_text(TEMPLATE)
+    proofs = t.extract_proofs(term_mode_candidate())
+    assert proofs[0] == "exact\n    Nat.add_zero n"
+    assert proofs[1] == "exact\n    have h2 : n < 4 := h\n    Nat.lt_succ_of_lt h2"
+    filled = t.fill(proofs)
+    assert "theorem b (n : Nat) (h : n < 4) : n < 5 := by\n  exact\n    have h2" in filled
+    tampered = term_mode_candidate().replace("(h : n < 4)", "(h : n < 3)")
+    with pytest.raises(TemplateMismatch, match="modified"):
+        t.extract_proofs(tampered)
 
 
 def test_single_hole_bare_proof_is_accepted():
@@ -174,6 +207,13 @@ def test_unfilled_template_is_rejected(lean_checker, task):
     assert not result.ok
     assert result.sorry_warnings
     assert any("sorryAx" in p for p in result.problems)
+
+
+def test_term_mode_proof_compiles(lean_checker):
+    t = LeanTemplate.from_text(TEMPLATE)
+    source = t.fill(t.extract_proofs(term_mode_candidate()))
+    result = lean_checker.check(source, ["X.a", "X.b"], tag="test_term_mode")
+    assert result.ok, result.output
 
 
 def test_axiom_backstop(lean_checker):

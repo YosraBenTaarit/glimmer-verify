@@ -2,8 +2,9 @@
 
 A candidate is accepted only if all of the following hold:
 
-1. *Integrity* (template tasks): it equals the template with each ``sorry`` hole replaced. The file
-   that is checked is rebuilt from the template's own text, so definitions and statements cannot drift.
+1. *Integrity* (template tasks): it equals the template with each ``sorry`` hole replaced, up to
+   comments, whitespace, and writing a hole's ``by sorry`` as a term-mode proof. The file that is
+   checked is rebuilt from the template's own text, so definitions and statements cannot drift.
 2. *Lexical policy*: proofs contain no ``sorry``/``admit``/``native_decide``/new axioms/option or
    meta-programming escapes (comments and strings are ignored).
 3. *Compilation*: Lean reports no errors and no ``declaration uses `sorry` `` warnings.
@@ -93,6 +94,39 @@ def iter_code_segments(text: str) -> Iterator[tuple[int, int]]:
         yield start, n
 
 
+def blank_comments(text: str) -> str:
+    """``text`` with every comment character except newlines replaced by a space (offsets preserved)."""
+    out = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        if text.startswith("--", i):
+            end = text.find("\n", i)
+            end = n if end < 0 else end
+        elif text.startswith("/-", i):
+            depth, end = 1, i + 2
+            while end < n and depth:
+                if text.startswith("/-", end):
+                    depth, end = depth + 1, end + 2
+                elif text.startswith("-/", end):
+                    depth, end = depth - 1, end + 2
+                else:
+                    end += 1
+        elif text[i] == '"':
+            i += 1
+            while i < n and text[i] != '"':
+                i += 2 if text[i] == "\\" else 1
+            i += 1
+            continue
+        else:
+            i += 1
+            continue
+        for k in range(i, end):
+            if out[k] != "\n":
+                out[k] = " "
+        i = end
+    return "".join(out)
+
+
 def iter_identifiers(text: str) -> Iterator[re.Match[str]]:
     for start, end in iter_code_segments(text):
         yield from _IDENT_RE.finditer(text, start, end)
@@ -118,11 +152,17 @@ def _column(text: str, offset: int) -> int:
 # Templates
 # ---------------------------------------------------------------------------
 
-def _chunk_pattern(chunk: str) -> str:
+def _chunk_pattern(chunk: str, optional_trailing_by: bool = False) -> str:
     tokens = chunk.split()
     if not tokens:
         return r"\s*"
+    if optional_trailing_by and len(tokens) > 1 and tokens[-1] == "by":
+        return r"\s*" + r"\s+".join(re.escape(t) for t in tokens[:-1]) + r"(?:\s+by(?![\w'!?]))?\s*"
     return r"\s*" + r"\s+".join(re.escape(t) for t in tokens) + r"\s*"
+
+
+def _ends_with_by(text: str) -> bool:
+    return re.search(r"(?:^|\s)by\s*\Z", text) is not None
 
 
 @dataclass(frozen=True)
@@ -164,9 +204,13 @@ class LeanTemplate:
         Raises ``TemplateMismatch`` if anything outside the holes was changed or a proof violates
         the lexical policy.
         """
-        chunks = self.chunks
-        pattern = r"\A" + "(.*?)".join(_chunk_pattern(c) for c in chunks) + r"\Z"
+        chunks = [blank_comments(c) for c in self.chunks]
+        candidate = blank_comments(candidate)
+        pattern = r"\A" + "(.*?)".join(
+            _chunk_pattern(c, optional_trailing_by=k < len(self.holes)) for k, c in enumerate(chunks)
+        ) + r"\Z"
         match = re.match(pattern, candidate, re.DOTALL)
+        term_mode = [False] * len(self.holes)
         if match is None:
             if len(self.holes) == 1 and not re.search(r"^\s*(theorem|def|namespace|import)\b", candidate, re.M):
                 raw = [(candidate.strip(), _column(candidate, len(candidate) - len(candidate.lstrip())))]
@@ -174,10 +218,19 @@ class LeanTemplate:
                 raise TemplateMismatch(self._diagnose(candidate))
         else:
             raw = [(match.group(k + 1), _column(candidate, match.start(k + 1))) for k in range(len(self.holes))]
+            term_mode = [
+                _ends_with_by(chunks[k]) and not _ends_with_by(candidate[: match.start(k + 1)])
+                for k in range(len(self.holes))
+            ]
 
         proofs: list[str] = []
         for k, ((text, cand_col), hole_col) in enumerate(zip(raw, self.hole_columns()), start=1):
-            proof = _reindent(text.rstrip(), cand_col, hole_col)
+            if term_mode[k - 1]:
+                # `:= term` in place of `:= by sorry`: keep the template's `by` and run the term with `exact`.
+                body = _reindent(text.rstrip(), cand_col, hole_col + 2)
+                proof = "exact\n" + " " * (hole_col + 2) + body if body.strip() else ""
+            else:
+                proof = _reindent(text.rstrip(), cand_col, hole_col)
             if not proof.strip():
                 raise TemplateMismatch(f"hole {k} was left empty")
             bad = forbidden_tokens(proof, PROOF_FORBIDDEN)
@@ -195,8 +248,9 @@ class LeanTemplate:
     def _diagnose(self, candidate: str) -> str:
         normalized_candidate = " ".join(candidate.split())
         pos = 0
-        for k, chunk in enumerate(self.chunks):
-            m = re.compile(_chunk_pattern(chunk), re.DOTALL).search(candidate, pos)
+        chunks = [blank_comments(c) for c in self.chunks]
+        for k, chunk in enumerate(chunks):
+            m = re.compile(_chunk_pattern(chunk, optional_trailing_by=k < len(self.holes)), re.DOTALL).search(candidate, pos)
             if m is None:
                 lines = [ln.strip() for ln in chunk.splitlines() if ln.strip()]
                 changed = next((ln for ln in lines if " ".join(ln.split()) not in normalized_candidate), None)
@@ -208,7 +262,8 @@ class LeanTemplate:
                 )
                 return (
                     f"the template text outside the `sorry` holes was modified: {detail}. "
-                    "Reproduce the template verbatim and only replace `sorry`."
+                    "Keep every declaration and statement exactly as in the template and only replace `sorry` "
+                    "(comments and line breaks may differ)."
                 )
             pos = m.end()
         return "the template text outside the `sorry` holes was modified; only replace `sorry`."
