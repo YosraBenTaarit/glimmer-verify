@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "lean_project": "src/verification/GlimmerVerify",
+  "reference_solutions": "benchmarks/reference_solutions",
+  "tasks": [
+    {
+      "id": "B01_ptx_bounds_no_wrap",
+      "mode": "complete",
+      "template": "B01_ptx_bounds_no_wrap.lean",
+      "theorems": ["GlimmerVerify.Bench.ptx_bounds_no_wrap"],
+      "source": { "path": "benchmarks/sources/paged_kv_index_guard.ptx", "language": "ptx" },
+      "spec": "Lanes that pass the guard %p1 (idx < n) compute base + 4*idx with 64-bit wrapping arithmetic. If the buffer fits in the 64-bit address space, that address does not wrap and the 4-byte access ends inside the buffer."
+    },
+    {
+      "id": "B02_ptx_bounds_bitvec",
+      "mode": "complete",
+      "template": "B02_ptx_bounds_bitvec.lean",
+      "theorems": ["GlimmerVerify.Bench.ptx_bounds_bitvec"],
+      "source": { "path": "benchmarks/sources/paged_kv_index_guard.ptx", "language": "ptx" },
+      "spec": "The same guarded access with base, n and idx as BitVec 64 registers: the wrapped address of a lane with idx < n (unsigned) lies in [base, base + 4n - 4]."
+    },
+    {
+      "id": "B03_physslot_in_bounds",
+      "mode": "complete",
+      "template": "B03_physslot_in_bounds.lean",
+      "theorems": ["GlimmerVerify.Bench.physSlot_lt_capacity"],
+      "source": { "path": "src/runtime/paged_kv_indexer.cu", "snippet": "paged_kv_index_kernel", "language": "cuda" },
+      "spec": "Every slot the indexer produces from a page table whose entries are all < num_physical_blocks is < num_physical_blocks * 16, so the KV gather never reads past the pool."
+    },
+    {
+      "id": "B04_warp_coalesced_segment",
+      "mode": "complete",
+      "template": "B04_warp_coalesced_segment.lean",
+      "theorems": ["GlimmerVerify.Bench.warp_access_coalesced"],
+      "source": { "path": "src/runtime/paged_kv_indexer.cu", "snippet": "paged_kv_index_kernel", "language": "cuda" },
+      "spec": "With 32 threads per block, the 32 lanes of warp w load req_ids[idx] from one 128-byte segment, so the load is a single coalesced transaction."
+    },
+    {
+      "id": "B05_grid_stride_coverage",
+      "mode": "complete",
+      "template": "B05_grid_stride_coverage.lean",
+      "theorems": ["GlimmerVerify.Bench.grid_stride_covers"],
+      "source": { "path": "src/runtime/paged_kv_indexer.cu", "snippet": "paged_kv_gather_kernel", "language": "cuda" },
+      "spec": "The grid-stride loop of the gather kernel visits every output index: index i is handled by thread i % stride."
+    },
+    {
+      "id": "B06_isolation_bytes",
+      "mode": "complete",
+      "template": "B06_isolation_bytes.lean",
+      "theorems": ["GlimmerVerify.Bench.paged_kv_isolation_bytes"],
+      "source": { "path": "src/runtime/paged_kv_indexer.cu", "snippet": "paged_kv_gather_kernel", "language": "cuda" },
+      "spec": "Cross-tenant isolation at byte granularity: with rows of rowBytes bytes per slot, two different requests never touch the same byte of the KV pool."
+    },
+    {
+      "id": "B07_physslot_injective",
+      "mode": "complete",
+      "template": "B07_physslot_injective.lean",
+      "theorems": ["GlimmerVerify.Bench.physSlot_injective_within_request"],
+      "source": { "path": "src/runtime/paged_kv_indexer.cu", "snippet": "paged_kv_index_kernel", "language": "cuda" },
+      "spec": "Within one request whose page table is injective on its allocated blocks, distinct token positions map to distinct KV slots."
+    },
+    {
+      "id": "B08_striped_allocator_isolated",
+      "mode": "complete",
+      "template": "B08_striped_allocator_isolated.lean",
+      "theorems": ["GlimmerVerify.Bench.stripedAllocator_isolated"],
+      "source": { "path": "src/runtime/paged_kv_indexer.cu", "snippet": "paged_kv_index_kernel", "language": "cuda" },
+      "spec": "The striped allocator (request r < R owns physical blocks r, r + R, r + 2R, ...) satisfies the isolation hypothesis of paged_kv_isolation."
+    },
+    {
+      "id": "A01_kernel_slot_sentinel",
+      "mode": "autoformalize",
+      "theorems": ["GlimmerVerify.Auto.kernel_slot_valid_or_sentinel"],
+      "source": { "path": "src/runtime/paged_kv_indexer.cu", "snippet": "paged_kv_index_kernel", "language": "cuda" },
+      "spec": "Model the per-lane computation of paged_kv_index_kernel as a Lean function over Int (req_ids, token_pos and table entries are signed int32), including every branch that yields -1. Use `pos / 16` and `pos % 16` for the shift and mask, which agree with them for pos >= 0. Prove kernel_slot_valid_or_sentinel: for every input, the result is -1 or satisfies 0 <= slot < num_physical_blocks * 16."
+    },
+    {
+      "id": "A02_gather_written_once",
+      "mode": "autoformalize",
+      "theorems": ["GlimmerVerify.Auto.gather_each_output_written_once"],
+      "source": { "path": "src/runtime/paged_kv_indexer.cu", "snippet": "paged_kv_gather_kernel", "language": "cuda" },
+      "spec": "Model which thread of the grid-stride loop writes output index idx (thread tid writes tid, tid + stride, tid + 2*stride, ...). Prove gather_each_output_written_once: for stride > 0, every idx is written by some thread tid < stride, and any two threads below stride that both write idx are equal (no write-write race). Core Lean has no ExistsUnique; state existence and uniqueness explicitly."
+    }
+  ]
+}

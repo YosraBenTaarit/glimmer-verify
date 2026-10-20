@@ -1,0 +1,35 @@
+# build outputs
+build/
+build-*/
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.exe
+*.ptx
+!benchmarks/sources/*.ptx
+*.cmi
+*.cmx
+*.cmo
+
+# Lean / Lake
+src/verification/GlimmerVerify/.lake/
+src/verification/GlimmerVerify/.glimmer_scratch/
+src/verification/GlimmerVerify/lake-manifest.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# run artifacts
+runs/
+plots/
+
+# secrets
+.env

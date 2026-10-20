@@ -1,0 +1,123 @@
+# Muse Glimmer 30B serving + monitoring.
+#
+#   docker compose -f docker/docker-compose.yml --env-file .env --profile vllm up -d     # vLLM   :8000
+#   docker compose -f docker/docker-compose.yml --env-file .env --profile sglang up -d   # SGLang :30000
+#   docker compose -f docker/docker-compose.yml up -d prometheus grafana                 # monitoring only
+#
+# Prometheus :9090 scrapes both engines (inside compose and on the host), Grafana :3000 ships a
+# provisioned dashboard. The engine services need the NVIDIA Container Toolkit.
+# Engine flags are expanded by /bin/sh inside the container ($$ escapes compose interpolation), so
+# empty QUANTIZATION / *_EXTRA_ARGS simply drop out of the command line.
+name: glimmer-verify
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+x-engine-env: &engine-env
+  HF_TOKEN: ${HF_TOKEN:-}
+  HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+  MODEL_ID: ${MODEL_ID:-meta-models/Muse-Glimmer-30B}
+  SERVED_MODEL_NAME: ${SERVED_MODEL_NAME:-meta-models/Muse-Glimmer-30B}
+  MAX_MODEL_LEN: ${MAX_MODEL_LEN:-32768}
+  GPU_MEM_UTIL: ${GPU_MEM_UTIL:-0.90}
+  TP_SIZE: ${TP_SIZE:-1}
+  QUANTIZATION: ${QUANTIZATION:-}
+
+services:
+  vllm:
+    <<: *gpu
+    profiles: ["vllm"]
+    image: vllm/vllm-openai:${VLLM_IMAGE_TAG:-latest}
+    ipc: host
+    ports: ["8000:8000"]
+    volumes:
+      - ${HF_CACHE_DIR:-~/.cache/huggingface}:/root/.cache/huggingface
+    environment:
+      <<: *engine-env
+      VLLM_EXTRA_ARGS: ${VLLM_EXTRA_ARGS:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        exec vllm serve "$$MODEL_ID"
+        --host 0.0.0.0 --port 8000
+        --served-model-name "$$SERVED_MODEL_NAME"
+        --enable-prefix-caching
+        --enable-prompt-tokens-details
+        --max-model-len "$$MAX_MODEL_LEN"
+        --gpu-memory-utilization "$$GPU_MEM_UTIL"
+        --tensor-parallel-size "$$TP_SIZE"
+        $${QUANTIZATION:+--quantization "$$QUANTIZATION"}
+        $$VLLM_EXTRA_ARGS
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 120
+      start_period: 120s
+
+  sglang:
+    <<: *gpu
+    profiles: ["sglang"]
+    image: lmsysorg/sglang:${SGLANG_IMAGE_TAG:-latest}
+    ipc: host
+    ports: ["30000:30000"]
+    volumes:
+      - ${HF_CACHE_DIR:-~/.cache/huggingface}:/root/.cache/huggingface
+    environment:
+      <<: *engine-env
+      SGLANG_EXTRA_ARGS: ${SGLANG_EXTRA_ARGS:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        exec python3 -m sglang.launch_server
+        --model-path "$$MODEL_ID"
+        --served-model-name "$$SERVED_MODEL_NAME"
+        --host 0.0.0.0 --port 30000
+        --enable-metrics
+        --enable-cache-report
+        --context-length "$$MAX_MODEL_LEN"
+        --mem-fraction-static "$$GPU_MEM_UTIL"
+        --tp-size "$$TP_SIZE"
+        $${QUANTIZATION:+--quantization "$$QUANTIZATION"}
+        $$SGLANG_EXTRA_ARGS
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:30000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 120
+      start_period: 120s
+
+  prometheus:
+    image: prom/prometheus:${PROMETHEUS_IMAGE_TAG:-latest}
+    ports: ["9090:9090"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=30d
+
+  grafana:
+    image: grafana/grafana:${GRAFANA_IMAGE_TAG:-latest}
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/glimmer-inference.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  prometheus-data:
+  grafana-data:

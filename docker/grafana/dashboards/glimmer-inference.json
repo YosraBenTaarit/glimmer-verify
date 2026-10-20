@@ -1,0 +1,121 @@
+{
+  "uid": "glimmer-inference",
+  "title": "glimmer-verify inference (Muse Glimmer 30B)",
+  "tags": ["glimmer-verify", "vllm", "sglang"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-30m", "to": "now" },
+  "templating": { "list": [] },
+  "annotations": { "list": [] },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "KV-cache usage",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "glimmer-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum by (job) (vllm:kv_cache_usage_perc or vllm:gpu_cache_usage_perc)", "legendFormat": "vLLM" },
+        { "refId": "B", "expr": "sum by (job) (sglang:token_usage)", "legendFormat": "SGLang" }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Prefix-cache hit rate (1m window)",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "glimmer-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(vllm:prefix_cache_hits_total[1m])) / sum(rate(vllm:prefix_cache_queries_total[1m])) or sum(rate(vllm:gpu_prefix_cache_hits_total[1m])) / sum(rate(vllm:gpu_prefix_cache_queries_total[1m]))",
+          "legendFormat": "vLLM APC"
+        },
+        { "refId": "B", "expr": "avg(sglang:cache_hit_rate)", "legendFormat": "SGLang RadixAttention" }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Time to first token",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "glimmer-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket[1m])))", "legendFormat": "vLLM p50" },
+        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:time_to_first_token_seconds_bucket[1m])))", "legendFormat": "vLLM p95" },
+        { "refId": "C", "expr": "histogram_quantile(0.5, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket[1m])))", "legendFormat": "SGLang p50" },
+        { "refId": "D", "expr": "histogram_quantile(0.95, sum by (le) (rate(sglang:time_to_first_token_seconds_bucket[1m])))", "legendFormat": "SGLang p95" }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Inter-token latency",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "glimmer-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket[1m]) or rate(vllm:time_per_output_token_seconds_bucket[1m])))",
+          "legendFormat": "vLLM p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(vllm:inter_token_latency_seconds_bucket[1m]) or rate(vllm:time_per_output_token_seconds_bucket[1m])))",
+          "legendFormat": "vLLM p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(sglang:inter_token_latency_seconds_bucket[1m]) or rate(sglang:time_per_output_token_seconds_bucket[1m])))",
+          "legendFormat": "SGLang p50"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Requests running / waiting",
+      "gridPos": { "x": 0, "y": 16, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "glimmer-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(vllm:num_requests_running)", "legendFormat": "vLLM running" },
+        { "refId": "B", "expr": "sum(vllm:num_requests_waiting)", "legendFormat": "vLLM waiting" },
+        { "refId": "C", "expr": "sum(sglang:num_running_reqs)", "legendFormat": "SGLang running" },
+        { "refId": "D", "expr": "sum(sglang:num_queue_reqs)", "legendFormat": "SGLang queued" }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Preemptions / s",
+      "gridPos": { "x": 8, "y": 16, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "glimmer-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(vllm:num_preemptions_total[1m]))", "legendFormat": "vLLM" },
+        { "refId": "B", "expr": "sum(rate(sglang:num_retracted_reqs_total[1m]))", "legendFormat": "SGLang retracted" }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Prompt vs. generation throughput",
+      "gridPos": { "x": 16, "y": 16, "w": 8, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "glimmer-prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(vllm:prompt_tokens_total[1m]))", "legendFormat": "vLLM prompt tok/s" },
+        { "refId": "B", "expr": "sum(rate(vllm:generation_tokens_total[1m]))", "legendFormat": "vLLM generation tok/s" },
+        { "refId": "C", "expr": "sum(rate(sglang:prompt_tokens_total[1m]))", "legendFormat": "SGLang prompt tok/s" },
+        { "refId": "D", "expr": "sum(rate(sglang:generation_tokens_total[1m]))", "legendFormat": "SGLang generation tok/s" }
+      ]
+    }
+  ]
+}

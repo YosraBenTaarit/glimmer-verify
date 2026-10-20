@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+# Each engine is scraped both as a compose service and on the host (native `vllm serve` /
+# `python -m sglang.launch_server` started by scripts/launch_*.sh --native). Unused targets are
+# simply reported as down.
+scrape_configs:
+  - job_name: vllm
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["vllm:8000", "host.docker.internal:8000"]
+
+  - job_name: sglang
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["sglang:30000", "host.docker.internal:30000"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

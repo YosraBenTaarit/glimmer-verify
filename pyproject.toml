@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "glimmer-verify"
+version = "0.1.0"
+description = "Prefix-cached agentic autoformalization, runtime FFI glue, and differential telemetry of LLM inference components with Muse Glimmer 30B"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "openai>=1.40",
+    "python-dotenv>=1.0",
+    "numpy>=1.24",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+gpu = ["nvidia-ml-py>=12.535"]
+diff = ["torch>=2.1"]
+dev = ["pytest>=7.4"]
+
+[project.scripts]
+glimmer-agent = "glimmer_verify.agent.proof_repair_agent:main"
+glimmer-metrics = "glimmer_verify.telemetry.metrics_collector:main"
+glimmer-difftest = "glimmer_verify.telemetry.differential_tester:main"
+
+[tool.setuptools]
+package-dir = { "glimmer_verify" = "src" }
+packages = ["glimmer_verify", "glimmer_verify.agent", "glimmer_verify.telemetry"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
