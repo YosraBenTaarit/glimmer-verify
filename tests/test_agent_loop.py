@@ -182,6 +182,28 @@ def test_reasoning_budget_config():
             BackendConfig.from_env({**base, **bad})
 
 
+def test_inspect_run(tmp_path, capsys):
+    from src.agent.proof_repair_agent import inspect_run
+
+    task_dir = tmp_path / "tasks" / "B02_x"
+    task_dir.mkdir(parents=True)
+    lean_fb = "Attempt 1 of 2 was rejected by Lean.\n\nerror at line 3, column 1:\nunknown tactic\n\nReply with ..."
+    conv = {
+        "task_id": "B02_x", "mode": "complete",
+        "messages": [{"role": "system", "content": ""}, {"role": "user", "content": "task"},
+                     {"role": "assistant", "content": ""}, {"role": "user", "content": lean_fb},
+                     {"role": "assistant", "content": ""}],
+        "attempts": [{"attempt": 1, "outcome": "lean_error", "finish_reason": "stop", "completion_tokens": 10},
+                     {"attempt": 2, "outcome": "proved", "finish_reason": "stop", "cost_usd": 0.001}],
+    }
+    (task_dir / "conversation.json").write_text(json.dumps(conv), encoding="utf-8")
+    assert inspect_run(tmp_path, ["b02"]) == 0
+    out = capsys.readouterr().out
+    assert "proved after 2 attempt(s)" in out and "unknown tactic" in out and "0.0010" in out
+    assert inspect_run(tmp_path, [], failed_only=True) == 0 and "B02_x" not in capsys.readouterr().out
+    assert inspect_run(tmp_path, ["B09"]) == 2
+
+
 def test_dotenv_fallback_without_python_dotenv(tmp_path, monkeypatch):
     import sys
 

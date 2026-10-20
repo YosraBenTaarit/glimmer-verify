@@ -100,12 +100,16 @@ def _display_path(path: Path) -> str:
         return path.name
 
 
+def _id_matches(task_id: str, prefixes: Sequence[str]) -> bool:
+    return any(task_id.casefold().startswith(p.casefold()) for p in prefixes)
+
+
 def load_manifest(manifest_path: Path, task_filters: Sequence[str] = ()) -> tuple[list[Task], Path]:
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
     lean_project = (REPO_ROOT / data.get("lean_project", "src/verification/GlimmerVerify")).resolve()
     tasks: list[Task] = []
     for entry in data["tasks"]:
-        if task_filters and not any(entry["id"].startswith(f) for f in task_filters):
+        if task_filters and not _id_matches(entry["id"], task_filters):
             continue
         source = entry["source"]
         source_path = (REPO_ROOT / source["path"]).resolve()
@@ -338,6 +342,50 @@ class ProofRepairAgent:
 
 
 # ---------------------------------------------------------------------------
+# Run inspection
+# ---------------------------------------------------------------------------
+
+def _feedback_gist(text: str, limit: int = 110) -> str:
+    """The first diagnostic of a Lean feedback message, or the rejection reason for other outcomes."""
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    if paragraphs and paragraphs[0].endswith("was rejected by Lean.") and len(paragraphs) > 1:
+        line = " ".join(ln.strip() for ln in paragraphs[1].splitlines()[:2])
+    else:
+        line = paragraphs[0].split(": ", 1)[-1] if paragraphs else ""
+    return line if len(line) <= limit else line[: limit - 1] + "…"
+
+
+def inspect_run(run_dir: Path, task_filters: Sequence[str] = (), failed_only: bool = False) -> int:
+    """Per-attempt table for each task of a finished (or partial) run, read from conversation.json."""
+    paths = sorted((run_dir / "tasks").glob("*/conversation.json"))
+    if task_filters:
+        paths = [p for p in paths if _id_matches(p.parent.name, task_filters)]
+    if not paths:
+        print(f"no matching tasks under {run_dir / 'tasks'}", file=sys.stderr)
+        return 2
+    for path in paths:
+        conv = json.loads(path.read_text(encoding="utf-8"))
+        attempts = conv.get("attempts", [])
+        proved = bool(attempts) and attempts[-1].get("outcome") == "proved"
+        if failed_only and proved:
+            continue
+        print(f"\n{conv['task_id']} ({conv.get('mode')}): {'proved' if proved else 'NOT proved'} "
+              f"after {len(attempts)} attempt(s)")
+        print(f"  {'#':>2} {'outcome':<20} {'finish':<7} {'out_tok':>7} {'reason_ch':>9} {'cached/prompt':>14} "
+              f"{'provider':<10} {'cost$':>8}  feedback")
+        # messages: system, task, then (assistant, feedback) pairs; feedback i follows attempt i.
+        feedback = [m["content"] for m in conv.get("messages", [])[3::2] if m["role"] == "user"]
+        for i, a in enumerate(attempts):
+            cached = f"{a.get('cached_tokens')}/{a.get('prompt_tokens')}"
+            cost = a.get("cost_usd")
+            print(f"  {a['attempt']:>2} {a['outcome']:<20} {str(a.get('finish_reason')):<7} "
+                  f"{str(a.get('completion_tokens')):>7} {str(a.get('reasoning_chars')):>9} {cached:>14} "
+                  f"{str(a.get('provider') or '-'):<10} {f'{cost:.4f}' if cost is not None else '-':>8}  "
+                  f"{_feedback_gist(feedback[i]) if i < len(feedback) else ''}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -349,6 +397,9 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     p.add_argument("--run-dir", type=Path, default=None, help="default: runs/<utc-timestamp>_<backend>")
     p.add_argument("--no-telemetry", action="store_true", help="skip Prometheus/NVML collection and CSV output")
     p.add_argument("--print-prompt", action="store_true", help="print the first prompt of each task and exit")
+    p.add_argument("--inspect", type=Path, metavar="RUN_DIR",
+                   help="print a per-attempt table for an existing run (filter with --tasks) and exit")
+    p.add_argument("--failed-only", action="store_true", help="with --inspect: only tasks that were not proved")
     adhoc = p.add_argument_group("ad-hoc task (instead of the manifest)")
     adhoc.add_argument("--source", type=Path)
     adhoc.add_argument("--snippet")
@@ -369,6 +420,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 stream.reconfigure(errors="backslashreplace")
             else:
                 stream.reconfigure(encoding="utf-8")
+    if args.inspect is not None:
+        return inspect_run(args.inspect, args.tasks, args.failed_only)
 
     if args.source is not None:
         if not args.spec or not args.theorem:
