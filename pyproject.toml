@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "glimmer-verify"
 version = "0.1.0"
-description = "Prefix-cached agentic autoformalization, runtime FFI glue, and differential telemetry of LLM inference components with Muse Glimmer 30B"
+description = "Experimental artifact: Lean 4 proof repair of a paged KV-cache indexer with Muse Glimmer 30B, prefix caching, vLLM/SGLang telemetry"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
