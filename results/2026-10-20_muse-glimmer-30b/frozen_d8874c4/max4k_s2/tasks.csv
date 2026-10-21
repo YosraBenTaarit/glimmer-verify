@@ -1,0 +1,11 @@
+run_id,task_id,mode,proved,attempts,max_attempts,outcomes
+20261020T152151Z_openrouter,B01_ptx_bounds_no_wrap,complete,True,1,9,proved
+20261020T152151Z_openrouter,B02_ptx_bounds_bitvec,complete,False,9,9,no_code|no_code|no_code|no_code|no_code|no_code|no_code|no_code|no_code
+20261020T152151Z_openrouter,B03_physslot_in_bounds,complete,True,1,9,proved
+20261020T152151Z_openrouter,B04_warp_coalesced_segment,complete,True,1,9,proved
+20261020T152151Z_openrouter,B05_grid_stride_coverage,complete,True,7,9,lean_error|no_code|lean_error|lean_error|lean_error|lean_error|proved
+20261020T152151Z_openrouter,B06_isolation_bytes,complete,False,9,9,no_code|no_code|no_code|no_code|no_code|no_code|no_code|no_code|no_code
+20261020T152151Z_openrouter,B07_physslot_injective,complete,False,9,9,no_code|no_code|no_code|no_code|no_code|no_code|no_code|no_code|no_code
+20261020T152151Z_openrouter,B08_striped_allocator_isolated,complete,False,9,9,no_code|no_code|lean_error|no_code|lean_error|no_code|lean_error|lean_error|no_code
+20261020T152151Z_openrouter,A01_kernel_slot_sentinel,autoformalize,False,9,9,no_code|no_code|lean_error|lean_error|lean_error|lean_error|lean_error|lean_error|lean_error
+20261020T152151Z_openrouter,A02_gather_written_once,autoformalize,True,9,9,no_code|lean_error|lean_error|lean_error|lean_error|lean_error|lean_error|lean_error|proved

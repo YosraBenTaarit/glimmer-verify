@@ -1,0 +1,14 @@
+﻿{
+    "seed":  2,
+    "max_retries":  8,
+    "top_p":  0.95,
+    "reasoning_max_tokens":  "",
+    "config":  "max4k",
+    "started_utc":  "2026-10-20T15:21:48.7708009Z",
+    "allow_fallbacks":  true,
+    "commit":  "d8874c48d98d8e19e406e41c6ed1e34b5430b9cf",
+    "max_tokens":  4096,
+    "model":  "meta/muse-glimmer-30b",
+    "provider_order":  "deepinfra",
+    "temperature":  0.2
+}

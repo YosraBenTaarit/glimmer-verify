@@ -7,8 +7,11 @@ For each task (kernel/PTX source + safety specification [+ Lean template]):
 3. If Lean rejects it, append the exact diagnostics (line, column, unsolved goals) as the next user
    turn and ask again, up to ``1 + MAX_RETRIES`` attempts.
 
-The message list is append-only: turn k+1's prompt is turn k's prompt + the model's reply + feedback,
-so the serving engine's prefix cache covers everything but the newest feedback message.
+By default the message list is append-only: turn k+1's prompt is turn k's prompt + the model's reply
++ feedback, so the serving engine's prefix cache covers everything but the newest feedback message.
+``--memory last_error`` / ``drop_truncated`` keep that *stable prefix* (system + task) byte-identical
+and rewrite only the failed suffix — the same agent can therefore be compared on OpenRouter today and
+on a self-hosted vLLM/SGLang stack later.
 
 Usage:
     python -m src.agent.proof_repair_agent                       # every task in the manifest
@@ -45,6 +48,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST = REPO_ROOT / "benchmarks" / "unproven_theorems" / "manifest.json"
 DEFAULT_LEAN_PROJECT = REPO_ROOT / "src" / "verification" / "GlimmerVerify"
 DEFAULT_MAX_RETRIES = 8
+MEMORY_STRATEGIES = ("append", "last_error", "drop_truncated")
 
 _LANGUAGE_BY_SUFFIX = {".cu": "cuda", ".cuh": "cuda", ".ptx": "ptx", ".cpp": "cpp", ".hpp": "cpp", ".c": "c", ".h": "c"}
 
@@ -158,6 +162,43 @@ def adhoc_task(
 
 
 # ---------------------------------------------------------------------------
+# Conversation views (what the model is sent; the on-disk transcript stays complete)
+# ---------------------------------------------------------------------------
+
+def view_messages(messages: Sequence[dict[str, str]], strategy: str) -> list[dict[str, str]]:
+    """Select the request sent on the next turn.
+
+    Every strategy keeps ``messages[:2]`` (system + task) byte-identical, which is the prefix the
+    serving engine can cache across retries *and* across tasks. They differ only in how they treat
+    the failed (assistant, feedback) pairs after that:
+
+    * ``append``: send the whole history. Maximum prefix reuse; also the path that produced the
+      empty-reply collapse after repeated truncated turns.
+    * ``last_error``: send only the latest failed attempt + its Lean feedback. The model sees one
+      contrastive error, not a pile of earlier failures. Cache hits are expected only on the
+      two-message prefix.
+    * ``drop_truncated``: append-only except empty assistant turns (and their feedback) are omitted,
+      which is the intervention the collapse replay suggested.
+    """
+    if strategy not in MEMORY_STRATEGIES:
+        raise ValueError(f"memory strategy must be one of {MEMORY_STRATEGIES}, got {strategy!r}")
+    if len(messages) < 2:
+        return [dict(m) for m in messages]
+    prefix = [dict(messages[0]), dict(messages[1])]
+    rest = [dict(m) for m in messages[2:]]
+    if strategy == "append":
+        return prefix + rest
+    pairs = list(zip(rest[0::2], rest[1::2]))
+    if strategy == "last_error":
+        return prefix + ([dict(pairs[-1][0]), dict(pairs[-1][1])] if pairs else [])
+    kept: list[dict[str, str]] = []
+    for assistant, feedback in pairs:
+        if assistant.get("content", "").strip():
+            kept.extend([dict(assistant), dict(feedback)])
+    return prefix + kept
+
+
+# ---------------------------------------------------------------------------
 # Agent
 # ---------------------------------------------------------------------------
 
@@ -208,9 +249,12 @@ class ProofRepairAgent:
         run_id: str = "run",
         collector: Any = None,
         log: Any = None,
+        memory: str = "append",
     ) -> None:
         if max_retries < 0:
             raise ValueError("max_retries must be >= 0")
+        if memory not in MEMORY_STRATEGIES:
+            raise ValueError(f"memory must be one of {MEMORY_STRATEGIES}, got {memory!r}")
         self.client = client
         self.checker = checker
         self.system_prompt = prompt_context.system_prompt()
@@ -219,6 +263,7 @@ class ProofRepairAgent:
         self.run_id = run_id
         self.collector = collector or NullCollector()
         self.log = log or (lambda msg: print(msg, file=sys.stderr, flush=True))
+        self.memory = memory
 
     def check_response(self, task: Task, content: str, attempt: int, truncated: bool) -> tuple[CandidateCheck, str]:
         """Validate and compile one response. Returns the check and the feedback for the next turn."""
@@ -262,7 +307,8 @@ class ProofRepairAgent:
         for attempt in range(1, self.max_attempts + 1):
             ctx = self.collector.begin_turn(task.id, attempt)
             self.collector.set_phase("generate")
-            completion = self.client.chat(messages)
+            request = view_messages(messages, self.memory)
+            completion = self.client.chat(request)
             self.collector.end_generation(ctx)
             messages.append({"role": "assistant", "content": completion.content})
 
@@ -321,7 +367,8 @@ class ProofRepairAgent:
         if task_dir is not None:
             (task_dir / "conversation.json").write_text(
                 json.dumps({"task_id": task.id, "mode": task.mode, "theorems": task.theorems,
-                            "messages": messages, "attempts": transcript}, indent=2, ensure_ascii=False),
+                            "memory": self.memory, "messages": messages, "attempts": transcript},
+                           indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
         self.collector.record_task(
@@ -400,6 +447,8 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     p.add_argument("--inspect", type=Path, metavar="RUN_DIR",
                    help="print a per-attempt table for an existing run (filter with --tasks) and exit")
     p.add_argument("--failed-only", action="store_true", help="with --inspect: only tasks that were not proved")
+    p.add_argument("--memory", choices=MEMORY_STRATEGIES, default=None,
+                   help="conversation view sent to the model (env AGENT_MEMORY, default append)")
     adhoc = p.add_argument_group("ad-hoc task (instead of the manifest)")
     adhoc.add_argument("--source", type=Path)
     adhoc.add_argument("--snippet")
@@ -449,9 +498,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     max_retries = args.max_retries if args.max_retries is not None else int(os.environ.get("MAX_RETRIES", DEFAULT_MAX_RETRIES))
+    memory = args.memory or os.environ.get("AGENT_MEMORY", "append").strip() or "append"
+    if memory not in MEMORY_STRATEGIES:
+        print(f"error: AGENT_MEMORY must be one of {MEMORY_STRATEGIES}, got {memory!r}", file=sys.stderr)
+        return 2
     run_id = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"_{config.server_kind}"
     run_dir = args.run_dir or (REPO_ROOT / "runs" / run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
+    experiment = {
+        "run_id": run_id,
+        "backend": config.backend,
+        "server_kind": config.server_kind,
+        "model": config.model,
+        "base_url": config.base_url,
+        "provider_order": list(config.provider_order),
+        "allow_fallbacks": config.allow_fallbacks,
+        "temperature": config.temperature,
+        "top_p": config.top_p,
+        "max_tokens": config.max_tokens,
+        "reasoning_effort": config.reasoning_effort,
+        "reasoning_max_tokens": config.reasoning_max_tokens,
+        "seed": config.seed,
+        "max_retries": max_retries,
+        "memory": memory,
+        "tasks": [t.id for t in tasks],
+    }
+    (run_dir / "experiment.json").write_text(json.dumps(experiment, indent=2), encoding="utf-8")
 
     collector = None
     if not args.no_telemetry:
@@ -461,10 +533,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     agent = ProofRepairAgent(
         GlimmerClient(config), checker, prompt_ctx,
-        max_retries=max_retries, run_dir=run_dir, run_id=run_id, collector=collector,
+        max_retries=max_retries, run_dir=run_dir, run_id=run_id, collector=collector, memory=memory,
     )
     print(f"run {run_id}: {len(tasks)} task(s), backend={config.backend} ({config.server_kind}), "
-          f"model={config.model}, attempts/task={agent.max_attempts}", file=sys.stderr)
+          f"model={config.model}, memory={memory}, attempts/task={agent.max_attempts}", file=sys.stderr)
     try:
         results = agent.run(tasks)
     finally:

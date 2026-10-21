@@ -10,7 +10,7 @@ import pytest
 from src.agent import prompts
 from src.agent.glimmer_client import BackendConfig, ChatCompletionResult, ConfigError, load_dotenv_if_present
 from src.agent.lean_checker import LeanCheckResult, LeanDiagnostic
-from src.agent.proof_repair_agent import ProofRepairAgent, load_manifest
+from src.agent.proof_repair_agent import ProofRepairAgent, load_manifest, view_messages
 from src.telemetry.metrics_collector import MetricsCollector
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,6 +79,38 @@ def test_prefix_is_append_only(task_b04, prompt_ctx):
         assert [m["role"] for m in cur[len(prev):]] == ["assistant", "user"]
     assert client.calls[1][2]["content"] == lean_block(wrong)
     assert "unsolved goals" in client.calls[1][3]["content"] and "line" in client.calls[1][3]["content"]
+
+
+def test_view_messages_keeps_stable_prefix():
+    hist = [
+        {"role": "system", "content": "S"},
+        {"role": "user", "content": "T"},
+        {"role": "assistant", "content": ""},
+        {"role": "user", "content": "fb1"},
+        {"role": "assistant", "content": "proof2"},
+        {"role": "user", "content": "fb2"},
+    ]
+    assert view_messages(hist, "append") == hist
+    last = view_messages(hist, "last_error")
+    assert last[:2] == hist[:2] and last[2:] == hist[4:]
+    dropped = view_messages(hist, "drop_truncated")
+    assert dropped[:2] == hist[:2] and dropped[2:] == hist[4:]
+    with pytest.raises(ValueError):
+        view_messages(hist, "something_else")
+
+
+def test_last_error_does_not_resend_earlier_failures(task_b04, prompt_ctx):
+    wrong = task_b04.template.text.replace("sorry", "simp")
+    right = task_b04.template.text.replace("sorry", "unfold elemAddr globalIdx\n  omega")
+    client = ScriptedClient([lean_block(wrong), lean_block(wrong), lean_block(right)])
+    agent = ProofRepairAgent(client, FakeChecker(), prompt_ctx, max_retries=8, memory="last_error")
+    result = agent.run_task(task_b04)
+    assert result.proved and result.attempts == 3
+    assert [m["role"] for m in client.calls[0]] == ["system", "user"]
+    assert client.calls[1][:2] == client.calls[0][:2]
+    assert client.calls[1][2]["content"] == lean_block(wrong)
+    assert len(client.calls[2]) == 4 and client.calls[2][:2] == client.calls[0][:2]
+    assert client.calls[2][2]["content"] == lean_block(wrong)
 
 
 def test_system_prompt_is_task_independent(prompt_ctx):

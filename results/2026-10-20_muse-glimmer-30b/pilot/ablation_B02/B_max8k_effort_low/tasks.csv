@@ -1,0 +1,2 @@
+run_id,task_id,mode,proved,attempts,max_attempts,outcomes
+20261020T145532Z_openrouter,B02_ptx_bounds_bitvec,complete,False,3,3,lean_error|lean_error|lean_error

@@ -1,0 +1,180 @@
+{
+  "task_id": "B05_grid_stride_coverage",
+  "mode": "complete",
+  "theorems": [
+    "GlimmerVerify.Bench.grid_stride_covers"
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a Lean 4 proof engineer verifying GPU inference-runtime code: CUDA kernels, PTX, and C++ host glue.\n\n## Environment\n- Lean 4 core only, toolchain `leanprover/lean4:v4.35.0`. There is NO Mathlib: do not import it and do not use Mathlib-only tactics (linarith, nlinarith, norm_num, ring, positivity, aesop, field_simp, exact?).\n- Available tactics include: intro, unfold, simp, simp only, split, by_cases, cases, rcases, obtain, induction, constructor, refine, exact, apply, rw, have, show, omega, decide, bv_omega, contradiction, exfalso, `<;>`.\n- `omega` decides linear arithmetic over Nat and Int, including `/` and `%` by numeric literals and `2 ^ k` literals. It treats non-linear subterms (`x * y`, `f x`, `x / y` with variable y) as opaque atoms, so unfold definitions before calling it and state facts about atoms with `have`.\n- For non-linear facts use core lemmas such as Nat.mod_add_div, Nat.div_add_mod, Nat.add_mul_div_right, Nat.add_mul_mod_self_right, Nat.mod_lt, Nat.mod_le, Nat.mod_eq_of_lt, Nat.div_eq_of_lt, Nat.mul_comm, Nat.add_comm.\n- Accepted axioms: propext, Classical.choice, Quot.sound. Proofs using sorry, admit, native_decide, new axioms, set_option, unsafe/implemented_by/extern, or meta-programming commands are rejected.\n\n## Output contract\n- Reply with exactly one ```lean code block containing the COMPLETE Lean file. Keep any text outside the block to a sentence or two.\n- \"complete\" tasks: reproduce the template verbatim and replace every `sorry` with a proof. Changing anything else (imports, comments, definitions, statements, namespaces) is rejected. Put helper lemmas inside the proof with `have`.\n- \"autoformalize\" tasks: write definitions that model the given code faithfully, then the requested theorems (exact fully qualified names) with complete proofs. Do not weaken the specification to make it easier to prove.\n- After each attempt you receive the Lean compiler's diagnostics for the file you sent. Fix the reported errors and send the full corrected file again.\n\n## Trusted library `GlimmerVerify.PagedKVProofs` (importable, shown verbatim)\n```lean\n/-!\n# Safety theorems for the paged KV-cache indexer\n\nModels of `src/runtime/paged_kv_indexer.cu`. Arithmetic is over `Nat`, i.e. unbounded;\nthe 64-bit no-wrap refinement is benchmark task `B01_ptx_bounds_no_wrap`.\n\n* `ptx_predicate_bounds_safe`: a lane that passes the PTX guard `%p1` only touches\n  `[base, base + 4 * n)`.\n* `paged_kv_isolation`: requests whose allocated page-table entries are disjoint never map a\n  token to the same physical KV slot.\n-/\n\nnamespace GlimmerVerify\n\n/-- Tokens per KV-cache block (`kKVBlockSize`, vLLM `--block-size 16`). -/\ndef blockSize : Nat := 16\n\n/-! ## PTX predicate `%p1` -/\n\n/-- Global lane index `%ctaid.x * %ntid.x + %tid.x`. -/\ndef globalIdx (blockIdx blockDim threadIdx : Nat) : Nat :=\n  blockIdx * blockDim + threadIdx\n\n/-- Byte address of 32-bit element `i` of a buffer starting at `base`. -/\ndef elemAddr (base i : Nat) : Nat :=\n  base + 4 * i\n\n/-- Address of the lane's guarded 32-bit access, or `none` when\n`setp.ge %p1, idx, n; @%p1 bra $L_exit;` masks the lane off. -/\ndef guardedAccess (base n i : Nat) : Option Nat :=\n  if i < n then some (elemAddr base i) else none\n\n/-- Every byte touched by a lane that survives `%p1` lies inside `[base, base + 4 * n)`. -/\ntheorem ptx_predicate_bounds_safe (base n bIdx bDim tIdx addr : Nat)\n    (h : guardedAccess base n (globalIdx bIdx bDim tIdx) = some addr) :\n    base ≤ addr ∧ addr + 4 ≤ base + 4 * n := by\n  unfold guardedAccess at h\n  split at h\n  · cases h\n    unfold elemAddr\n    omega\n  · cases h\n\n/-- The same fact stated directly on the guard hypothesis `%p1 : i < n`. -/\ntheorem ptx_predicate_bounds_safe_of_guard (base n bIdx bDim tIdx : Nat)\n    (hp1 : globalIdx bIdx bDim tIdx < n) :\n    elemAddr base (globalIdx bIdx bDim tIdx) + 4 ≤ base + 4 * n := by\n  unfold elemAddr\n  omega\n\n/-! ## Paged KV-cache isolation -/\n\n/-- Allocator state: `table req l` is the physical block backing logical block `l` of request\n`req`, and `numBlocks req` is how many logical blocks `req` has been given. Entries at\n`l ≥ numBlocks req` are unconstrained, like the `-1` padding in the runtime's block table. -/\nstructure KVAllocator where\n  table : Nat → Nat → Nat\n  numBlocks : Nat → Nat\n\n/-- Physical token slot of position `pos` of request `req`; the kernel's\n`phys * kKVBlockSize + (pos & (kKVBlockSize - 1))`. -/\ndef physSlot (table : Nat → Nat → Nat) (req pos : Nat) : Nat :=\n  table req (pos / blockSize) * blockSize + pos % blockSize\n\n/-- Distinct requests never share an allocated physical block. -/\ndef KVAllocator.Isolated (A : KVAllocator) : Prop :=\n  ∀ a b, a ≠ b → ∀ la lb, la < A.numBlocks a → lb < A.numBlocks b → A.table a la ≠ A.table b lb\n\n/-- Position `pos` lies inside the blocks allocated to `req`. -/\ndef KVAllocator.Owns (A : KVAllocator) (req pos : Nat) : Prop :=\n  pos < A.numBlocks req * blockSize\n\n/-- Cross-tenant isolation: two different requests never read or write the same KV slot. -/\ntheorem paged_kv_isolation (A : KVAllocator) (hiso : A.Isolated) {a b pa pb : Nat}\n    (hab : a ≠ b) (ha : A.Owns a pa) (hb : A.Owns b pb) :\n    physSlot A.table a pa ≠ physSlot A.table b pb := by\n  unfold KVAllocator.Owns blockSize at ha hb\n  have hblk := hiso a b hab (pa / 16) (pb / 16) (by omega) (by omega)\n  unfold physSlot blockSize\n  omega\n\nend GlimmerVerify\n```\n"
+    },
+    {
+      "role": "user",
+      "content": "# Task B05_grid_stride_coverage (complete)\n\n## Specification\nThe grid-stride loop of the gather kernel visits every output index: index i is handled by thread i % stride.\n\n## Code under verification (src/runtime/paged_kv_indexer.cu :: paged_kv_gather_kernel)\n```cuda\n// Grid-stride loop over the flattened [n_slots, row_elems] output; consecutive lanes copy\n// consecutive elements of one KV row, so both the cache read and the output write coalesce.\nextern \"C\" GLIMMER_KERNEL void paged_kv_gather_kernel(const float* GLIMMER_RESTRICT kv_cache,\n                                                      std::int64_t num_slots_total, std::int32_t row_elems,\n                                                      const std::int64_t* GLIMMER_RESTRICT slots,\n                                                      std::int32_t n_slots, float* GLIMMER_RESTRICT out) {\n  const std::int64_t total = static_cast<std::int64_t>(n_slots) * row_elems;\n  const std::int64_t stride = static_cast<std::int64_t>(gridDim.x) * blockDim.x;\n  for (std::int64_t idx = static_cast<std::int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < total;\n       idx += stride) {\n    const std::int64_t q = idx / row_elems;\n    const std::int64_t e = idx - q * row_elems;\n    const std::int64_t slot = slots[q];\n    out[idx] = (slot >= 0 && slot < num_slots_total) ? GLIMMER_LDG(kv_cache + slot * row_elems + e) : 0.0f;\n  }\n}\n```\n\n## Template `B05_grid_stride_coverage.lean`\nReplace every `sorry`; keep all other text exactly as is.\n```lean\nimport GlimmerVerify.PagedKVProofs\n\n/-!\nB05: the grid-stride loop of `paged_kv_gather_kernel` covers every output element.\n\nThread `tid` executes `for (idx = tid; idx < total; idx += stride)`, i.e. it visits exactly the\nindices `tid + k * stride`. Every index `i` is visited by thread `i % stride`, which exists\nbecause `tid < stride = gridDim.x * blockDim.x`.\n-/\n\nnamespace GlimmerVerify.Bench\n\n/-- Thread `tid` of a grid-stride loop with stride `stride` visits index `i`. -/\ndef gridStrideVisits (stride tid i : Nat) : Prop :=\n  ∃ k, i = tid + k * stride\n\ntheorem grid_stride_covers (stride i : Nat) (hs : 0 < stride) :\n    ∃ tid, tid < stride ∧ tid ≤ i ∧ gridStrideVisits stride tid i := by\n  sorry\n\nend GlimmerVerify.Bench\n```\n\nRequired theorems (checked with `#print axioms`): `GlimmerVerify.Bench.grid_stride_covers`\n"
+    },
+    {
+      "role": "assistant",
+      "content": "```lean\nimport GlimmerVerify.PagedKVProofs\n\n/-!\nB05: the grid-stride loop of `paged_kv_gather_kernel` covers every output element.\n\nThread `tid` executes `for (idx = tid; idx < total; idx += stride)`, i.e. it visits exactly the\nindices `tid + k * stride`. Every index `i` is visited by thread `i % stride`, which exists\nbecause `tid < stride = gridDim.x * blockDim.x`.\n-/\n\nnamespace GlimmerVerify.Bench\n\n/-- Thread `tid` of a grid-stride loop with stride `stride` visits index `i`. -/\ndef gridStrideVisits (stride tid i : Nat) : Prop :=\n  ∃ k, i = tid + k * stride\n\ntheorem grid_stride_covers (stride i : Nat) (hs : 0 < stride) :\n    ∃ tid, tid < stride ∧ tid ≤ i ∧ gridStrideVisits stride tid i := by\n  let tid := i % stride\n  let k := i / stride\n  have hmod_lt : tid < stride := Nat.mod_lt i hs\n  have hmod_add : tid + k * stride = i := by\n    rw [← Nat.mul_comm stride k]\n    exact (Nat.mod_add_div i stride).symm\n  have hle : tid ≤ i := by\n    have : tid ≤ tid + k * stride := Nat.le_add_right tid (k * stride)\n    rw [hmod_add] at this\n    exact this\n  exact ⟨tid, hmod_lt, hle, k, hmod_add.symm⟩\n\nend GlimmerVerify.Bench\n```"
+    },
+    {
+      "role": "user",
+      "content": "Attempt 1 of 9 was rejected by Lean.\n\nerror at line 24, column 4:\nType mismatch\n  Eq.symm (Nat.mod_add_div i stride)\nhas type\n  i = i % stride + stride * (i / stride)\nbut is expected to have type\n  tid + stride * k = i\n\n   22 |   have hmod_add : tid + k * stride = i := by\n   23 |     rw [← Nat.mul_comm stride k]\n>> 24 |     exact (Nat.mod_add_div i stride).symm\n   25 |   have hle : tid ≤ i := by\n   26 |     have : tid ≤ tid + k * stride := Nat.le_add_right tid (k * stride)\n\naudit: `GlimmerVerify.Bench.grid_stride_covers` depends on non-standard axioms: sorryAx\n\nReply with the corrected complete file in a single ```lean block."
+    },
+    {
+      "role": "assistant",
+      "content": "```lean\nimport GlimmerVerify.PagedKVProofs\n\n/-!\nB05: the grid-stride loop of `paged_kv_gather_kernel` covers every output element.\n\nThread `tid` executes `for (idx = tid; idx < total; idx += stride)`, i.e. it visits exactly the\nindices `tid + k * stride`. Every index `i` is visited by thread `i % stride`, which exists\nbecause `tid < stride = gridDim.x * blockDim.x`.\n-/\n\nnamespace GlimmerVerify.Bench\n\n/-- Thread `tid` of a grid-stride loop with stride `stride` visits index `i`. -/\ndef gridStrideVisits (stride tid i : Nat) : Prop :=\n  ∃ k, i = tid + k * stride\n\ntheorem grid_stride_covers (stride i : Nat) (hs : 0 < stride) :\n    ∃ tid, tid < stride ∧ tid ≤ i ∧ gridStrideVisits stride tid i := by\n  let tid := i % stride\n  let k := i / stride\n  have hmod_lt : tid < stride := Nat.mod_lt i hs\n  have hmod_eq : tid + stride * k = i := by\n    simp [tid, k]\n    exact (Nat.mod_add_div i stride).symm\n  have hmod_add : tid + k * stride = i := by\n    rw [Nat.mul_comm k stride]\n    exact hmod_eq\n  have hle : tid ≤ i := Nat.mod_le i stride\n  exact ⟨tid, hmod_lt, hle, k, hmod_add.symm⟩\n\nend GlimmerVerify.Bench\n```"
+    },
+    {
+      "role": "user",
+      "content": "Attempt 2 of 9 was rejected by Lean.\n\nerror at line 24, column 4:\nType mismatch\n  Eq.symm (Nat.mod_add_div i stride)\nhas type\n  i = i % stride + stride * (i / stride)\nbut is expected to have type\n  i % stride + stride * (i / stride) = i\n\n   22 |   have hmod_eq : tid + stride * k = i := by\n   23 |     simp [tid, k]\n>> 24 |     exact (Nat.mod_add_div i stride).symm\n   25 |   have hmod_add : tid + k * stride = i := by\n   26 |     rw [Nat.mul_comm k stride]\n\naudit: `GlimmerVerify.Bench.grid_stride_covers` depends on non-standard axioms: sorryAx\n\nReply with the corrected complete file in a single ```lean block."
+    },
+    {
+      "role": "assistant",
+      "content": "```lean\nimport GlimmerVerify.PagedKVProofs\n\n/-!\nB05: the grid-stride loop of `paged_kv_gather_kernel` covers every output element.\n\nThread `tid` executes `for (idx = tid; idx < total; idx += stride)`, i.e. it visits exactly the\nindices `tid + k * stride`. Every index `i` is visited by thread `i % stride`, which exists\nbecause `tid < stride = gridDim.x * blockDim.x`.\n-/\n\nnamespace GlimmerVerify.Bench\n\n/-- Thread `tid` of a grid-stride loop with stride `stride` visits index `i`. -/\ndef gridStrideVisits (stride tid i : Nat) : Prop :=\n  ∃ k, i = tid + k * stride\n\ntheorem grid_stride_covers (stride i : Nat) (hs : 0 < stride) :\n    ∃ tid, tid < stride ∧ tid ≤ i ∧ gridStrideVisits stride tid i := by\n  let tid := i % stride\n  let k := i / stride\n  have hmod_lt : tid < stride := Nat.mod_lt i hs\n  have hmod_eq : tid + stride * k = i := by\n    simp [tid, k]\n    exact (Nat.mod_add_div i stride)\n  have hmod_add : tid + k * stride = i := by\n    rw [Nat.mul_comm k stride]\n    exact hmod_eq\n  have hle : tid ≤ i := Nat.mod_le i stride\n  exact ⟨tid, hmod_lt, hle, k, hmod_add.symm⟩\n\nend GlimmerVerify.Bench\n```"
+    }
+  ],
+  "attempts": [
+    {
+      "attempt": 1,
+      "outcome": "lean_error",
+      "integrity_error": null,
+      "lean_errors": 1,
+      "lean_elapsed_s": 2.358557399998972,
+      "ttft_s": 1.047029699999257,
+      "prompt_tokens": 2183,
+      "cached_tokens": 1408,
+      "completion_tokens": 703,
+      "finish_reason": "stop",
+      "reasoning_chars": 1108,
+      "response_id": "gen-1792510261-dl1a1msUbWx2lEZjgS9b",
+      "provider": "DeepInfra",
+      "cost_usd": 0.00113242,
+      "telemetry": {
+        "run_id": "20261020T152231Z_openrouter",
+        "task_id": "B05_grid_stride_coverage",
+        "turn": 1,
+        "backend": "openrouter",
+        "server_kind": "openrouter",
+        "model": "meta/muse-glimmer-30b",
+        "outcome": "lean_error",
+        "ttft_s": 1.047029699999257,
+        "itl_mean_s": 0.08062652509506872,
+        "itl_p50_s": 0.05645619999995688,
+        "itl_p95_s": 0.2984187000001839,
+        "tpot_s": 0.03022125270655562,
+        "e2e_s": 22.262349100001302,
+        "prompt_tokens": 2183,
+        "completion_tokens": 703,
+        "cached_tokens": 1408,
+        "client_prefix_hit_rate": 0.6449839670178653,
+        "server_prefix_hit_rate": null,
+        "server_kv_cache_usage_peak": null,
+        "server_preemptions_delta": null,
+        "server_ttft_mean_s": null,
+        "lean_ok": false,
+        "lean_elapsed_s": 2.358557399998972,
+        "lean_errors": 1,
+        "finish_reason": "stop",
+        "response_id": "gen-1792510261-dl1a1msUbWx2lEZjgS9b",
+        "served_model": "meta/muse-glimmer-30b",
+        "provider": "DeepInfra",
+        "cost_usd": 0.00113242
+      }
+    },
+    {
+      "attempt": 2,
+      "outcome": "lean_error",
+      "integrity_error": null,
+      "lean_errors": 1,
+      "lean_elapsed_s": 2.50358899999992,
+      "ttft_s": 1.0182500000009895,
+      "prompt_tokens": 2743,
+      "cached_tokens": 2112,
+      "completion_tokens": 658,
+      "finish_reason": "stop",
+      "reasoning_chars": 1031,
+      "response_id": "gen-1792510286-Wuc85IpxE2qZyXMa672k",
+      "provider": "DeepInfra",
+      "cost_usd": 0.00106338,
+      "telemetry": {
+        "run_id": "20261020T152231Z_openrouter",
+        "task_id": "B05_grid_stride_coverage",
+        "turn": 2,
+        "backend": "openrouter",
+        "server_kind": "openrouter",
+        "model": "meta/muse-glimmer-30b",
+        "outcome": "lean_error",
+        "ttft_s": 1.0182500000009895,
+        "itl_mean_s": 0.051440055825242754,
+        "itl_p50_s": 0.0013533999990613665,
+        "itl_p95_s": 0.19347820000257343,
+        "tpot_s": 0.01613380563165824,
+        "e2e_s": 11.618160300000454,
+        "prompt_tokens": 2743,
+        "completion_tokens": 658,
+        "cached_tokens": 2112,
+        "client_prefix_hit_rate": 0.7699598979219833,
+        "server_prefix_hit_rate": null,
+        "server_kv_cache_usage_peak": null,
+        "server_preemptions_delta": null,
+        "server_ttft_mean_s": null,
+        "lean_ok": false,
+        "lean_elapsed_s": 2.50358899999992,
+        "lean_errors": 1,
+        "finish_reason": "stop",
+        "response_id": "gen-1792510286-Wuc85IpxE2qZyXMa672k",
+        "served_model": "meta/muse-glimmer-30b",
+        "provider": "DeepInfra",
+        "cost_usd": 0.00106338
+      }
+    },
+    {
+      "attempt": 3,
+      "outcome": "proved",
+      "integrity_error": null,
+      "lean_errors": 0,
+      "lean_elapsed_s": 2.3397859999968205,
+      "ttft_s": 1.616026799998508,
+      "prompt_tokens": 3296,
+      "cached_tokens": 2624,
+      "completion_tokens": 352,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "response_id": "gen-1792510300-eSqt5QHe3tabzhMlhI69",
+      "provider": "DeepInfra",
+      "cost_usd": 0.00072896,
+      "telemetry": {
+        "run_id": "20261020T152231Z_openrouter",
+        "task_id": "B05_grid_stride_coverage",
+        "turn": 3,
+        "backend": "openrouter",
+        "server_kind": "openrouter",
+        "model": "meta/muse-glimmer-30b",
+        "outcome": "proved",
+        "ttft_s": 1.616026799998508,
+        "itl_mean_s": 0.06176066333335055,
+        "itl_p50_s": 0.001763699998264201,
+        "itl_p95_s": 0.380645999997796,
+        "tpot_s": 0.015839472934475584,
+        "e2e_s": 7.175681799999438,
+        "prompt_tokens": 3296,
+        "completion_tokens": 352,
+        "cached_tokens": 2624,
+        "client_prefix_hit_rate": 0.7961165048543689,
+        "server_prefix_hit_rate": null,
+        "server_kv_cache_usage_peak": null,
+        "server_preemptions_delta": null,
+        "server_ttft_mean_s": null,
+        "lean_ok": true,
+        "lean_elapsed_s": 2.3397859999968205,
+        "lean_errors": 0,
+        "finish_reason": "stop",
+        "response_id": "gen-1792510300-eSqt5QHe3tabzhMlhI69",
+        "served_model": "meta/muse-glimmer-30b",
+        "provider": "DeepInfra",
+        "cost_usd": 0.00072896
+      }
+    }
+  ]
+}

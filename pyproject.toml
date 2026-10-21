@@ -28,7 +28,7 @@ glimmer-difftest = "glimmer_verify.telemetry.differential_tester:main"
 
 [tool.setuptools]
 package-dir = { "glimmer_verify" = "src" }
-packages = ["glimmer_verify", "glimmer_verify.agent", "glimmer_verify.telemetry"]
+packages = ["glimmer_verify", "glimmer_verify.agent", "glimmer_verify.telemetry", "glimmer_verify.experiments"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

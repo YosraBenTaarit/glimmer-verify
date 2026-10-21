@@ -68,6 +68,22 @@
       "spec": "The striped allocator (request r < R owns physical blocks r, r + R, r + 2R, ...) satisfies the isolation hypothesis of paged_kv_isolation."
     },
     {
+      "id": "B09_physslot_div_mod",
+      "mode": "complete",
+      "template": "B09_physslot_div_mod.lean",
+      "theorems": ["GlimmerVerify.Bench.physSlot_div_mod"],
+      "source": { "path": "src/runtime/paged_kv_indexer.cu", "snippet": "paged_kv_index_kernel", "language": "cuda" },
+      "spec": "The indexer writes phys * 16 + (pos & 15). Inverting that formula: slot / 16 is the physical block named by the page table, and slot % 16 is the in-block offset pos % 16. This is how the gather kernel recovers the row of kv_cache."
+    },
+    {
+      "id": "B10_owns_logical_block",
+      "mode": "complete",
+      "template": "B10_owns_logical_block.lean",
+      "theorems": ["GlimmerVerify.Bench.owns_iff_logical_in_range"],
+      "source": { "path": "src/runtime/paged_kv_indexer.cu", "snippet": "paged_kv_index_kernel", "language": "cuda" },
+      "spec": "KVAllocator.Owns (pos < numBlocks * 16) is equivalent to the kernel's logical-block guard pos/16 < numBlocks. Unallocated table entries (the -1 padding) are exactly the logical blocks past numBlocks."
+    },
+    {
       "id": "A01_kernel_slot_sentinel",
       "mode": "autoformalize",
       "theorems": ["GlimmerVerify.Auto.kernel_slot_valid_or_sentinel"],

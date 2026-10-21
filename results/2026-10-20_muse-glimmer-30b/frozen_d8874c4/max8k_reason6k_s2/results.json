@@ -1,0 +1,151 @@
+[
+  {
+    "task_id": "B01_ptx_bounds_no_wrap",
+    "mode": "complete",
+    "proved": true,
+    "attempts": 1,
+    "outcomes": [
+      "proved"
+    ],
+    "final_path": "runs\\frozen_d8874c4\\max8k_reason6k_s2\\tasks\\B01_ptx_bounds_no_wrap\\final.lean"
+  },
+  {
+    "task_id": "B02_ptx_bounds_bitvec",
+    "mode": "complete",
+    "proved": false,
+    "attempts": 9,
+    "outcomes": [
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error"
+    ],
+    "final_path": null
+  },
+  {
+    "task_id": "B03_physslot_in_bounds",
+    "mode": "complete",
+    "proved": true,
+    "attempts": 2,
+    "outcomes": [
+      "lean_error",
+      "proved"
+    ],
+    "final_path": "runs\\frozen_d8874c4\\max8k_reason6k_s2\\tasks\\B03_physslot_in_bounds\\final.lean"
+  },
+  {
+    "task_id": "B04_warp_coalesced_segment",
+    "mode": "complete",
+    "proved": true,
+    "attempts": 2,
+    "outcomes": [
+      "lean_error",
+      "proved"
+    ],
+    "final_path": "runs\\frozen_d8874c4\\max8k_reason6k_s2\\tasks\\B04_warp_coalesced_segment\\final.lean"
+  },
+  {
+    "task_id": "B05_grid_stride_coverage",
+    "mode": "complete",
+    "proved": true,
+    "attempts": 3,
+    "outcomes": [
+      "lean_error",
+      "lean_error",
+      "proved"
+    ],
+    "final_path": "runs\\frozen_d8874c4\\max8k_reason6k_s2\\tasks\\B05_grid_stride_coverage\\final.lean"
+  },
+  {
+    "task_id": "B06_isolation_bytes",
+    "mode": "complete",
+    "proved": false,
+    "attempts": 9,
+    "outcomes": [
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error"
+    ],
+    "final_path": null
+  },
+  {
+    "task_id": "B07_physslot_injective",
+    "mode": "complete",
+    "proved": false,
+    "attempts": 9,
+    "outcomes": [
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error"
+    ],
+    "final_path": null
+  },
+  {
+    "task_id": "B08_striped_allocator_isolated",
+    "mode": "complete",
+    "proved": false,
+    "attempts": 9,
+    "outcomes": [
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error"
+    ],
+    "final_path": null
+  },
+  {
+    "task_id": "A01_kernel_slot_sentinel",
+    "mode": "autoformalize",
+    "proved": true,
+    "attempts": 9,
+    "outcomes": [
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "no_code",
+      "lean_error",
+      "lean_error",
+      "no_code",
+      "proved"
+    ],
+    "final_path": "runs\\frozen_d8874c4\\max8k_reason6k_s2\\tasks\\A01_kernel_slot_sentinel\\final.lean"
+  },
+  {
+    "task_id": "A02_gather_written_once",
+    "mode": "autoformalize",
+    "proved": true,
+    "attempts": 6,
+    "outcomes": [
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "lean_error",
+      "proved"
+    ],
+    "final_path": "runs\\frozen_d8874c4\\max8k_reason6k_s2\\tasks\\A02_gather_written_once\\final.lean"
+  }
+]

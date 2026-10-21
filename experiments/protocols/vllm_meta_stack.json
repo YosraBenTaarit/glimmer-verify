@@ -1,0 +1,16 @@
+{
+  "name": "vllm_meta_stack_v1",
+  "description": "Self-hosted reference stack: official weights `meta-models/Muse-Glimmer-30B` on vLLM with Automatic Prefix Caching. Launch with `bash scripts/launch_vllm.sh` (T4: 80 GB BF16; T3: 24 GB needs QUANTIZATION). Then `BACKEND=local_server LOCAL_SERVER_KIND=vllm`. The agent, prompts, Lean checker and protocol axes are identical to openrouter_scale_v1 so the two tables are comparable. Server-side hit rate comes from Prometheus (`--enable-prompt-tokens-details`).",
+  "tasks": [],
+  "shared": {
+    "max_tokens": 8192,
+    "reasoning_max_tokens": 6144,
+    "temperature": 0.2,
+    "top_p": 0.95,
+    "max_retries": 8
+  },
+  "axes": {
+    "memory": ["append", "last_error", "drop_truncated"],
+    "seed": [1, 2, 3, 4, 5]
+  }
+}

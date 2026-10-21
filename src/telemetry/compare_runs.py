@@ -47,14 +47,15 @@ def summarize_run(run_dir: Path) -> dict[str, Any]:
     exp = json.loads((run_dir / "experiment.json").read_text(encoding="utf-8-sig"))
     tasks = _rows(run_dir / "tasks.csv")
     turns = _rows(run_dir / "turns.csv")
+    config = exp.get("config") or (exp.get("cell") or {}).get("memory") or exp.get("memory") or run_dir.name
     proved = {t["task_id"]: int(t["attempts"]) for t in tasks if t["proved"] == "True"}
     failed_first = [t for t in tasks if not (t["proved"] == "True" and int(t["attempts"]) == 1)]
     repaired = [t for t in failed_first if t["proved"] == "True"]
     cost = sum(_num(t.get("cost_usd")) or 0 for t in turns)
     return {
         "run": run_dir.name,
-        "config": exp["config"],
-        "seed": exp.get("seed"),
+        "config": config,
+        "seed": exp.get("seed") or (exp.get("cell") or {}).get("seed"),
         "commit": exp.get("commit"),
         "tasks": len(tasks),
         "proved": len(proved),

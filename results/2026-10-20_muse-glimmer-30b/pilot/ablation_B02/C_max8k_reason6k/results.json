@@ -1,0 +1,14 @@
+[
+  {
+    "task_id": "B02_ptx_bounds_bitvec",
+    "mode": "complete",
+    "proved": false,
+    "attempts": 3,
+    "outcomes": [
+      "integrity_violation",
+      "lean_error",
+      "lean_error"
+    ],
+    "final_path": null
+  }
+]

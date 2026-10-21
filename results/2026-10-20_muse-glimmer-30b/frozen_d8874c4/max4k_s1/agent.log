@@ -1,0 +1,80 @@
+run 20261020T152144Z_openrouter: 10 task(s), backend=openrouter (openrouter), model=meta/muse-glimmer-30b, attempts/task=9
+[B01_ptx_bounds_no_wrap] attempt 1/9: proved, ttft 2.53s, cached 1408/2555 prompt tokens, DeepInfra, $0.0028
+[B02_ptx_bounds_bitvec] attempt 1/9: no_code, ttft 1.22s, cached 2432/2530 prompt tokens, DeepInfra, $0.0050
+[B02_ptx_bounds_bitvec] attempt 2/9: no_code, ttft 2.36s, cached 2496/2581 prompt tokens, DeepInfra, $0.0050
+[B02_ptx_bounds_bitvec] attempt 3/9: no_code, ttft 1.13s, cached 2560/2632 prompt tokens, DeepInfra, $0.0050
+[B02_ptx_bounds_bitvec] attempt 4/9: no_code, ttft 0.86s, cached 2560/2683 prompt tokens, DeepInfra, $0.0051
+[B02_ptx_bounds_bitvec] attempt 5/9: no_code, ttft 1.95s, cached 2624/2734 prompt tokens, DeepInfra, $0.0051
+[B02_ptx_bounds_bitvec] attempt 6/9: no_code, ttft 0.83s, cached 2624/2867 prompt tokens, DeepInfra, $0.0051
+[B02_ptx_bounds_bitvec] attempt 7/9: no_code, cached 2752/2918 prompt tokens, DeepInfra, $0.0002
+[B02_ptx_bounds_bitvec] attempt 8/9: lean_error (4 error(s)), ttft 1.24s, cached 2816/2958 prompt tokens, DeepInfra, $0.0007
+[B02_ptx_bounds_bitvec] attempt 9/9: no_code, ttft 0.60s, cached 3072/4059 prompt tokens, DeepInfra, $0.0053
+[B03_physslot_in_bounds] attempt 1/9: no_code, ttft 0.57s, cached 2240/2325 prompt tokens, DeepInfra, $0.0050
+[B03_physslot_in_bounds] attempt 2/9: lean_error (3 error(s)), ttft 0.53s, cached 2240/2376 prompt tokens, DeepInfra, $0.0018
+[B03_physslot_in_bounds] attempt 3/9: proved, ttft 1.93s, cached 2304/3115 prompt tokens, DeepInfra, $0.0026
+[B04_warp_coalesced_segment] attempt 1/9: proved, ttft 0.55s, cached 2240/2362 prompt tokens, DeepInfra, $0.0014
+[B05_grid_stride_coverage] attempt 1/9: lean_error (3 error(s)), ttft 2.12s, cached 2112/2183 prompt tokens, DeepInfra, $0.0042
+[B05_grid_stride_coverage] attempt 2/9: lean_error (2 error(s)), ttft 1.71s, cached 2304/3014 prompt tokens, DeepInfra, $0.0035
+[B05_grid_stride_coverage] attempt 3/9: lean_error (2 error(s)), ttft 1.14s, cached 2944/3772 prompt tokens, DeepInfra, $0.0008
+[B05_grid_stride_coverage] attempt 4/9: lean_error (2 error(s)), ttft 2.31s, cached 4032/4533 prompt tokens, DeepInfra, $0.0018
+[B05_grid_stride_coverage] attempt 5/9: lean_error (2 error(s)), ttft 0.86s, cached 4416/5182 prompt tokens, DeepInfra, $0.0040
+[B05_grid_stride_coverage] attempt 6/9: lean_error (1 error(s)), ttft 0.73s, cached 5056/5900 prompt tokens, DeepInfra, $0.0015
+[B05_grid_stride_coverage] attempt 7/9: lean_error (2 error(s)), ttft 0.97s, cached 5824/6467 prompt tokens, DeepInfra, $0.0015
+[B05_grid_stride_coverage] attempt 8/9: lean_error (2 error(s)), ttft 0.99s, cached 6400/7085 prompt tokens, DeepInfra, $0.0017
+[B05_grid_stride_coverage] attempt 9/9: proved, ttft 0.96s, cached 6976/7764 prompt tokens, DeepInfra, $0.0032
+[B06_isolation_bytes] attempt 1/9: no_code, ttft 0.72s, cached 2112/2206 prompt tokens, DeepInfra, $0.0050
+[B06_isolation_bytes] attempt 2/9: no_code, ttft 1.36s, cached 2176/2257 prompt tokens, DeepInfra, $0.0050
+[B06_isolation_bytes] attempt 3/9: no_code, ttft 2.24s, cached 2240/2308 prompt tokens, DeepInfra, $0.0050
+[B06_isolation_bytes] attempt 4/9: no_code, cached 2240/2359 prompt tokens, DeepInfra, $0.0001
+[B06_isolation_bytes] attempt 5/9: no_code, cached 2304/2399 prompt tokens, DeepInfra, $0.0001
+[B06_isolation_bytes] attempt 6/9: no_code, cached 2368/2439 prompt tokens, DeepInfra, $0.0001
+[B06_isolation_bytes] attempt 7/9: no_code, ttft 1.21s, cached 2368/2479 prompt tokens, DeepInfra, $0.0050
+[B06_isolation_bytes] attempt 8/9: no_code, cached 2368/2530 prompt tokens, DeepInfra, $0.0001
+[B06_isolation_bytes] attempt 9/9: no_code, ttft 0.60s, cached 2432/2570 prompt tokens, DeepInfra, $0.0051
+[B07_physslot_injective] attempt 1/9: no_code, ttft 0.68s, cached 2240/2343 prompt tokens, DeepInfra, $0.0050
+[B07_physslot_injective] attempt 2/9: no_code, ttft 0.82s, cached 2304/2394 prompt tokens, DeepInfra, $0.0050
+[B07_physslot_injective] attempt 3/9: no_code, ttft 0.90s, cached 2368/2445 prompt tokens, DeepInfra, $0.0050
+[B07_physslot_injective] attempt 4/9: lean_error (3 error(s)), ttft 0.55s, cached 2368/2753 prompt tokens, DeepInfra, $0.0030
+[B07_physslot_injective] attempt 5/9: lean_error (1 error(s)), ttft 0.80s, cached 2688/4117 prompt tokens, DeepInfra, $0.0011
+[B07_physslot_injective] attempt 6/9: proved, ttft 0.81s, cached 4480/4748 prompt tokens, DeepInfra, $0.0008
+[B08_striped_allocator_isolated] attempt 1/9: no_code, ttft 1.71s, cached 2240/2331 prompt tokens, DeepInfra, $0.0050
+[B08_striped_allocator_isolated] attempt 2/9: no_code, ttft 0.51s, cached 2304/2382 prompt tokens, DeepInfra, $0.0050
+[B08_striped_allocator_isolated] attempt 3/9: no_code, ttft 0.78s, cached 2368/2433 prompt tokens, DeepInfra, $0.0050
+[B08_striped_allocator_isolated] attempt 4/9: lean_error (1 error(s)), ttft 4.01s, cached 2368/2484 prompt tokens, DeepInfra, $0.0043
+[B08_striped_allocator_isolated] attempt 5/9: no_code, ttft 3.15s, cached 2368/3058 prompt tokens, DeepInfra, $0.0052
+[B08_striped_allocator_isolated] attempt 6/9: lean_error (1 error(s)), ttft 2.52s, cached 2944/3109 prompt tokens, DeepInfra, $0.0007
+[B08_striped_allocator_isolated] attempt 7/9: no_code, ttft 0.87s, cached 3456/3717 prompt tokens, DeepInfra, $0.0051
+[B08_striped_allocator_isolated] attempt 8/9: lean_error (1 error(s)), ttft 1.63s, cached 3648/3768 prompt tokens, DeepInfra, $0.0007
+[B08_striped_allocator_isolated] attempt 9/9: lean_error (4 error(s)), ttft 0.66s, cached 4096/4356 prompt tokens, DeepInfra, $0.0037
+[A01_kernel_slot_sentinel] attempt 1/9: no_code, ttft 0.78s, cached 2112/2227 prompt tokens, DeepInfra, $0.0050
+[A01_kernel_slot_sentinel] attempt 2/9: no_code, ttft 0.82s, cached 2176/2278 prompt tokens, DeepInfra, $0.0050
+[A01_kernel_slot_sentinel] attempt 3/9: no_code, ttft 0.72s, cached 2240/2329 prompt tokens, DeepInfra, $0.0050
+[A01_kernel_slot_sentinel] attempt 4/9: no_code, cached 2240/2380 prompt tokens, DeepInfra, $0.0001
+[A01_kernel_slot_sentinel] attempt 5/9: no_code, cached 2304/2420 prompt tokens, DeepInfra, $0.0001
+[A01_kernel_slot_sentinel] attempt 6/9: no_code, ttft 1.66s, cached 2304/2460 prompt tokens, DeepInfra, $0.0051
+[A01_kernel_slot_sentinel] attempt 7/9: lean_error (2 error(s)), ttft 0.82s, cached 2368/2569 prompt tokens, DeepInfra, $0.0011
+[A01_kernel_slot_sentinel] attempt 8/9: no_code, ttft 1.64s, cached 3200/3874 prompt tokens, DeepInfra, $0.0052
+[A01_kernel_slot_sentinel] attempt 9/9: lean_error (6 error(s)), ttft 2.12s, cached 3776/4396 prompt tokens, DeepInfra, $0.0020
+[A02_gather_written_once] attempt 1/9: no_code, ttft 0.57s, cached 1920/2049 prompt tokens, DeepInfra, $0.0050
+[A02_gather_written_once] attempt 2/9: no_code, ttft 0.68s, cached 1920/2100 prompt tokens, DeepInfra, $0.0050
+[A02_gather_written_once] attempt 3/9: no_code, ttft 0.92s, cached 2048/2151 prompt tokens, DeepInfra, $0.0050
+[A02_gather_written_once] attempt 4/9: no_code, ttft 0.92s, cached 2112/2202 prompt tokens, DeepInfra, $0.0050
+[A02_gather_written_once] attempt 5/9: no_code, cached 2176/2253 prompt tokens, DeepInfra, $0.0001
+[A02_gather_written_once] attempt 6/9: no_code, cached 2176/2293 prompt tokens, DeepInfra, $0.0001
+[A02_gather_written_once] attempt 7/9: no_code, ttft 2.38s, cached 2240/2333 prompt tokens, DeepInfra, $0.0050
+[A02_gather_written_once] attempt 8/9: no_code, cached 2240/2384 prompt tokens, DeepInfra, $0.0001
+[A02_gather_written_once] attempt 9/9: no_code, ttft 1.09s, cached 2304/2424 prompt tokens, DeepInfra, $0.0050
+
+proved 5/10 task(s); artifacts in runs\frozen_d8874c4\max4k_s1
+  B01_ptx_bounds_no_wrap             proved in 1 attempt(s)
+  B02_ptx_bounds_bitvec              unproved after 9 attempt(s)
+  B03_physslot_in_bounds             proved in 3 attempt(s)
+  B04_warp_coalesced_segment         proved in 1 attempt(s)
+  B05_grid_stride_coverage           proved in 9 attempt(s)
+  B06_isolation_bytes                unproved after 9 attempt(s)
+  B07_physslot_injective             proved in 6 attempt(s)
+  B08_striped_allocator_isolated     unproved after 9 attempt(s)
+  A01_kernel_slot_sentinel           unproved after 9 attempt(s)
+  A02_gather_written_once            unproved after 9 attempt(s)
+client prefix-cache hit rate (turns >= 2): 90.5%
+reported cost: $0.2122; turns by provider: {'DeepInfra': 65}

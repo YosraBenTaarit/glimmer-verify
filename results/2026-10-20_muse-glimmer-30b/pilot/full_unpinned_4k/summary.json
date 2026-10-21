@@ -1,0 +1,33 @@
+{
+  "tasks": 10,
+  "proved": 4,
+  "convergence_rate": 0.4,
+  "mean_attempts_to_proof": 2.5,
+  "attempts_histogram": {
+    "1": 3,
+    "7": 1,
+    "unproved": 6
+  },
+  "turns": 64,
+  "client_prefix_hit_rate_turn1": 0.6320799619228938,
+  "client_prefix_hit_rate_turn2plus": 0.8401114442196256,
+  "median_ttft_s_by_turn": {
+    "1": 0.5006684499985568,
+    "2": 0.443020599999727,
+    "3": 0.5222404999985883,
+    "4": 0.9010641999993823,
+    "5": 0.7144936000004236,
+    "6": 0.8714913499989052,
+    "7": 0.6044325000002573,
+    "8": 0.6508897999992769,
+    "9": 0.6430036000001564
+  },
+  "total_prompt_tokens": 211905.0,
+  "total_completion_tokens": 165323.0,
+  "run_id": "20261020T143328Z_openrouter",
+  "backend": "openrouter",
+  "server_kind": "openrouter",
+  "model": "meta/muse-glimmer-30b",
+  "server_prefix_hit_rate_run": null,
+  "server_preemptions_run": null
+}

@@ -1,0 +1,180 @@
+{
+  "task_id": "B02_ptx_bounds_bitvec",
+  "mode": "complete",
+  "theorems": [
+    "GlimmerVerify.Bench.ptx_bounds_bitvec"
+  ],
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a Lean 4 proof engineer verifying GPU inference-runtime code: CUDA kernels, PTX, and C++ host glue.\n\n## Environment\n- Lean 4 core only, toolchain `leanprover/lean4:v4.35.0`. There is NO Mathlib: do not import it and do not use Mathlib-only tactics (linarith, nlinarith, norm_num, ring, positivity, aesop, field_simp, exact?).\n- Available tactics include: intro, unfold, simp, simp only, split, by_cases, cases, rcases, obtain, induction, constructor, refine, exact, apply, rw, have, show, omega, decide, bv_omega, contradiction, exfalso, `<;>`.\n- `omega` decides linear arithmetic over Nat and Int, including `/` and `%` by numeric literals and `2 ^ k` literals. It treats non-linear subterms (`x * y`, `f x`, `x / y` with variable y) as opaque atoms, so unfold definitions before calling it and state facts about atoms with `have`.\n- For non-linear facts use core lemmas such as Nat.mod_add_div, Nat.div_add_mod, Nat.add_mul_div_right, Nat.add_mul_mod_self_right, Nat.mod_lt, Nat.mod_le, Nat.mod_eq_of_lt, Nat.div_eq_of_lt, Nat.mul_comm, Nat.add_comm.\n- Accepted axioms: propext, Classical.choice, Quot.sound. Proofs using sorry, admit, native_decide, new axioms, set_option, unsafe/implemented_by/extern, or meta-programming commands are rejected.\n\n## Output contract\n- Reply with exactly one ```lean code block containing the COMPLETE Lean file. Keep any text outside the block to a sentence or two.\n- \"complete\" tasks: reproduce the template verbatim and replace every `sorry` with a proof. Changing anything else (imports, comments, definitions, statements, namespaces) is rejected. Put helper lemmas inside the proof with `have`.\n- \"autoformalize\" tasks: write definitions that model the given code faithfully, then the requested theorems (exact fully qualified names) with complete proofs. Do not weaken the specification to make it easier to prove.\n- After each attempt you receive the Lean compiler's diagnostics for the file you sent. Fix the reported errors and send the full corrected file again.\n\n## Trusted library `GlimmerVerify.PagedKVProofs` (importable, shown verbatim)\n```lean\n/-!\n# Safety theorems for the paged KV-cache indexer\n\nModels of `src/runtime/paged_kv_indexer.cu`. Arithmetic is over `Nat`, i.e. unbounded;\nthe 64-bit no-wrap refinement is benchmark task `B01_ptx_bounds_no_wrap`.\n\n* `ptx_predicate_bounds_safe`: a lane that passes the PTX guard `%p1` only touches\n  `[base, base + 4 * n)`.\n* `paged_kv_isolation`: requests whose allocated page-table entries are disjoint never map a\n  token to the same physical KV slot.\n-/\n\nnamespace GlimmerVerify\n\n/-- Tokens per KV-cache block (`kKVBlockSize`, vLLM `--block-size 16`). -/\ndef blockSize : Nat := 16\n\n/-! ## PTX predicate `%p1` -/\n\n/-- Global lane index `%ctaid.x * %ntid.x + %tid.x`. -/\ndef globalIdx (blockIdx blockDim threadIdx : Nat) : Nat :=\n  blockIdx * blockDim + threadIdx\n\n/-- Byte address of 32-bit element `i` of a buffer starting at `base`. -/\ndef elemAddr (base i : Nat) : Nat :=\n  base + 4 * i\n\n/-- Address of the lane's guarded 32-bit access, or `none` when\n`setp.ge %p1, idx, n; @%p1 bra $L_exit;` masks the lane off. -/\ndef guardedAccess (base n i : Nat) : Option Nat :=\n  if i < n then some (elemAddr base i) else none\n\n/-- Every byte touched by a lane that survives `%p1` lies inside `[base, base + 4 * n)`. -/\ntheorem ptx_predicate_bounds_safe (base n bIdx bDim tIdx addr : Nat)\n    (h : guardedAccess base n (globalIdx bIdx bDim tIdx) = some addr) :\n    base ≤ addr ∧ addr + 4 ≤ base + 4 * n := by\n  unfold guardedAccess at h\n  split at h\n  · cases h\n    unfold elemAddr\n    omega\n  · cases h\n\n/-- The same fact stated directly on the guard hypothesis `%p1 : i < n`. -/\ntheorem ptx_predicate_bounds_safe_of_guard (base n bIdx bDim tIdx : Nat)\n    (hp1 : globalIdx bIdx bDim tIdx < n) :\n    elemAddr base (globalIdx bIdx bDim tIdx) + 4 ≤ base + 4 * n := by\n  unfold elemAddr\n  omega\n\n/-! ## Paged KV-cache isolation -/\n\n/-- Allocator state: `table req l` is the physical block backing logical block `l` of request\n`req`, and `numBlocks req` is how many logical blocks `req` has been given. Entries at\n`l ≥ numBlocks req` are unconstrained, like the `-1` padding in the runtime's block table. -/\nstructure KVAllocator where\n  table : Nat → Nat → Nat\n  numBlocks : Nat → Nat\n\n/-- Physical token slot of position `pos` of request `req`; the kernel's\n`phys * kKVBlockSize + (pos & (kKVBlockSize - 1))`. -/\ndef physSlot (table : Nat → Nat → Nat) (req pos : Nat) : Nat :=\n  table req (pos / blockSize) * blockSize + pos % blockSize\n\n/-- Distinct requests never share an allocated physical block. -/\ndef KVAllocator.Isolated (A : KVAllocator) : Prop :=\n  ∀ a b, a ≠ b → ∀ la lb, la < A.numBlocks a → lb < A.numBlocks b → A.table a la ≠ A.table b lb\n\n/-- Position `pos` lies inside the blocks allocated to `req`. -/\ndef KVAllocator.Owns (A : KVAllocator) (req pos : Nat) : Prop :=\n  pos < A.numBlocks req * blockSize\n\n/-- Cross-tenant isolation: two different requests never read or write the same KV slot. -/\ntheorem paged_kv_isolation (A : KVAllocator) (hiso : A.Isolated) {a b pa pb : Nat}\n    (hab : a ≠ b) (ha : A.Owns a pa) (hb : A.Owns b pb) :\n    physSlot A.table a pa ≠ physSlot A.table b pb := by\n  unfold KVAllocator.Owns blockSize at ha hb\n  have hblk := hiso a b hab (pa / 16) (pb / 16) (by omega) (by omega)\n  unfold physSlot blockSize\n  omega\n\nend GlimmerVerify\n```\n"
+    },
+    {
+      "role": "user",
+      "content": "# Task B02_ptx_bounds_bitvec (complete)\n\n## Specification\nThe same guarded access with base, n and idx as BitVec 64 registers: the wrapped address of a lane with idx < n (unsigned) lies in [base, base + 4n - 4].\n\n## Code under verification (benchmarks/sources/paged_kv_index_guard.ptx)\n```ptx\n//\n// Hand-written excerpt of the guard prologue of paged_kv_index_kernel, in the form nvcc emits for\n// sm_80. It is task context for the agent, not compiler output: regenerate the authoritative\n// listing with `make ptx CUDA_ARCH=sm_80` (build/ptx/paged_kv_indexer.ptx) and pass it with --source.\n//\n.visible .entry paged_kv_index_kernel(\n\t.param .u64 paged_kv_index_kernel_param_0,\t// block_tables\n\t.param .u32 paged_kv_index_kernel_param_1,\t// num_reqs\n\t.param .u32 paged_kv_index_kernel_param_2,\t// max_blocks_per_req\n\t.param .u32 paged_kv_index_kernel_param_3,\t// num_physical_blocks\n\t.param .u64 paged_kv_index_kernel_param_4,\t// req_ids\n\t.param .u64 paged_kv_index_kernel_param_5,\t// token_pos\n\t.param .u32 paged_kv_index_kernel_param_6,\t// n_queries\n\t.param .u64 paged_kv_index_kernel_param_7\t// out_slots\n)\n{\n\t.reg .pred \t%p<8>;\n\t.reg .b32 \t%r<16>;\n\t.reg .b64 \t%rd<24>;\n\n\tld.param.u64 \t%rd5, [paged_kv_index_kernel_param_4];\n\tld.param.u32 \t%r6, [paged_kv_index_kernel_param_6];\n\tmov.u32 \t%r7, %ctaid.x;\n\tmov.u32 \t%r8, %ntid.x;\n\tmov.u32 \t%r9, %tid.x;\n\tmul.wide.u32 \t%rd9, %r7, %r8;\n\tcvt.u64.u32 \t%rd10, %r9;\n\tadd.s64 \t%rd1, %rd9, %rd10;\t\t// idx = %ctaid.x * %ntid.x + %tid.x\n\tcvt.s64.s32 \t%rd11, %r6;\n\tsetp.ge.s64 \t%p1, %rd1, %rd11;\t\t// %p1 := idx >= n_queries\n\t@%p1 bra \t$L__BB0_5;\t\t\t// masked lanes skip every access\n\tcvta.to.global.u64 \t%rd12, %rd5;\n\tshl.b64 \t%rd13, %rd1, 2;\t\t\t// byte offset 4 * idx\n\tadd.s64 \t%rd14, %rd12, %rd13;\t\t// &req_ids[idx] = base + 4 * idx\n\tld.global.nc.u32 \t%r1, [%rd14];\n\t// ... token_pos load, block-table gather, slot computation, st.global.u64 to out_slots[idx]\n$L__BB0_5:\n\tret;\n}\n```\n\n## Template `B02_ptx_bounds_bitvec.lean`\nReplace every `sorry`; keep all other text exactly as is.\n```lean\nimport GlimmerVerify.PagedKVProofs\n\n/-!\nB02: the predicated access over machine words.\n\n`base`, `n` and the lane index `i` are 64-bit registers (`BitVec 64`); `+` and `*` wrap and\n`i < n` is the unsigned comparison of `setp.lt.u64`. If the buffer fits in the address space,\nthe wrapped address of a guarded lane still lies inside the buffer.\n-/\n\nnamespace GlimmerVerify.Bench\n\ntheorem ptx_bounds_bitvec (base n i : BitVec 64) (hfit : base.toNat + 4 * n.toNat < 2 ^ 64)\n    (hp1 : i < n) :\n    base.toNat ≤ (base + 4 * i).toNat ∧ (base + 4 * i).toNat + 4 ≤ base.toNat + 4 * n.toNat := by\n  sorry\n\nend GlimmerVerify.Bench\n```\n\nRequired theorems (checked with `#print axioms`): `GlimmerVerify.Bench.ptx_bounds_bitvec`\n"
+    },
+    {
+      "role": "assistant",
+      "content": "```lean\nimport GlimmerVerify.PagedKVProofs\n\n/-!\nB02: the predicated access over machine words.\n\n`base`, `n` and the lane index `i` are 64-bit registers (`BitVec 64`); `+` and `*` wrap and\n`i < n` is the unsigned comparison of `setp.lt.u64`. If the buffer fits in the address space,\nthe wrapped address of a guarded lane still lies inside the buffer.\n-/\n\nnamespace GlimmerVerify.Bench\n\ntheorem ptx_bounds_bitvec (base n i : BitVec 64) (hfit : base.toNat + 4 * n.toNat < 2 ^ 64)\n    (hp1 : i < n) :\n    base.toNat ≤ (base + 4 * i).toNat ∧ (base + 4 * i).toNat + 4 ≤ base.toNat + 4 * n.toNat := by\n  have hi : i.toNat < n.toNat := BitVec.toNat_lt_toNat hp1\n  have h4i_lt : 4 * i.toNat < 4 * n.toNat := by omega\n  have hsum_lt : base.toNat + 4 * i.toNat < 2 ^ 64 := by\n    have : base.toNat + 4 * i.toNat ≤ base.toNat + 4 * n.toNat := by omega\n    omega\n  have hbase_add_4i_toNat : (base + 4 * i).toNat = base.toNat + 4 * i.toNat := by\n    have h1 : (base + 4 * i).toNat = (base.toNat + (4 * i).toNat) % 2 ^ 64 := by\n      simp [BitVec.toNat_add, BitVec.toNat_mul, BitVec.toNat_ofNat]\n    have h2 : (4 * i).toNat = 4 * i.toNat := by\n      simp [BitVec.toNat_mul, BitVec.toNat_ofNat]\n    rw [h2] at h1\n    rw [Nat.mod_eq_of_lt hsum_lt] at h1\n    exact h1\n  have hbase_add_4n_toNat : (base + 4 * n).toNat = base.toNat + 4 * n.toNat := by\n    have h1 : (base + 4 * n).toNat = (base.toNat + (4 * n).toNat) % 2 ^ 64 := by\n      simp [BitVec.toNat_add, BitVec.toNat_mul, BitVec.toNat_ofNat]\n    have h2 : (4 * n).toNat = 4 * n.toNat := by\n      simp [BitVec.toNat_mul, BitVec.toNat_ofNat]\n    rw [h2] at h1\n    have hlt : base.toNat + 4 * n.toNat < 2 ^ 64 := hfit\n    rw [Nat.mod_eq_of_lt hlt] at h1\n    exact h1\n  rw [hbase_add_4i_toNat]\n  constructor\n  · omega\n  · omega\n\nend GlimmerVerify.Bench\n```"
+    },
+    {
+      "role": "user",
+      "content": "Attempt 1 of 3 was rejected by Lean.\n\nerror at line 16, column 33:\nUnknown constant `BitVec.toNat_lt_toNat`\n\n   14 |     (hp1 : i < n) :\n   15 |     base.toNat ≤ (base + 4 * i).toNat ∧ (base + 4 * i).toNat + 4 ≤ base.toNat + 4 * n.toNat := by\n>> 16 |   have hi : i.toNat < n.toNat := BitVec.toNat_lt_toNat hp1\n   17 |   have h4i_lt : 4 * i.toNat < 4 * n.toNat := by omega\n   18 |   have hsum_lt : base.toNat + 4 * i.toNat < 2 ^ 64 := by\n\nerror at line 24, column 45:\nunsolved goals\nbase n i : BitVec 64\nhfit : base.toNat + 4 * n.toNat < 2 ^ 64\nhp1 : i < n\nhi : i.toNat < n.toNat\nh4i_lt : 4 * i.toNat < 4 * n.toNat\nhsum_lt : base.toNat + 4 * i.toNat < 2 ^ 64\nh1 : (base + 4 * i).toNat = (base.toNat + (4 * i).toNat) % 2 ^ 64\n⊢ 4 * i.toNat < 18446744073709551616\n\n   22 |     have h1 : (base + 4 * i).toNat = (base.toNat + (4 * i).toNat) % 2 ^ 64 := by\n   23 |       simp [BitVec.toNat_add, BitVec.toNat_mul, BitVec.toNat_ofNat]\n>> 24 |     have h2 : (4 * i).toNat = 4 * i.toNat := by\n   25 |       simp [BitVec.toNat_mul, BitVec.toNat_ofNat]\n   26 |     rw [h2] at h1\n\nerror at line 32, column 45:\nunsolved goals\nbase n i : BitVec 64\nhfit : base.toNat + 4 * n.toNat < 2 ^ 64\nhp1 : i < n\nhi : i.toNat < n.toNat\nh4i_lt : 4 * i.toNat < 4 * n.toNat\nhsum_lt : base.toNat + 4 * i.toNat < 2 ^ 64\nhbase_add_4i_toNat : (base + 4 * i).toNat = base.toNat + 4 * i.toNat\nh1 : (base + 4 * n).toNat = (base.toNat + (4 * n).toNat) % 2 ^ 64\n⊢ 4 * n.toNat < 18446744073709551616\n\n   30 |     have h1 : (base + 4 * n).toNat = (base.toNat + (4 * n).toNat) % 2 ^ 64 := by\n   31 |       simp [BitVec.toNat_add, BitVec.toNat_mul, BitVec.toNat_ofNat]\n>> 32 |     have h2 : (4 * n).toNat = 4 * n.toNat := by\n   33 |       simp [BitVec.toNat_mul, BitVec.toNat_ofNat]\n   34 |     rw [h2] at h1\n\naudit: `GlimmerVerify.Bench.ptx_bounds_bitvec` depends on non-standard axioms: sorryAx\n\nReply with the corrected complete file in a single ```lean block."
+    },
+    {
+      "role": "assistant",
+      "content": "```lean\nimport GlimmerVerify.PagedKVProofs\n\n/-!\nB02: the predicated access over machine words.\n\n`base`, `n` and the lane index `i` are 64-bit registers (`BitVec 64`); `+` and `*` wrap and\n`i < n` is the unsigned comparison of `setp.lt.u64`. If the buffer fits in the address space,\nthe wrapped address of a guarded lane still lies inside the buffer.\n-/\n\nnamespace GlimmerVerify.Bench\n\ntheorem ptx_bounds_bitvec (base n i : BitVec 64) (hfit : base.toNat + 4 * n.toNat < 2 ^ 64)\n    (hp1 : i < n) :\n    base.toNat ≤ (base + 4 * i).toNat ∧ (base + 4 * i).toNat + 4 ≤ base.toNat + 4 * n.toNat := by\n  have hi : i.toNat < n.toNat := (BitVec.lt_iff_toNat_lt).mp hp1\n  have h4i_lt_4n : 4 * i.toNat < 4 * n.toNat := by omega\n  have h4i_lt : 4 * i.toNat < 2 ^ 64 := by\n    have : 4 * i.toNat < 4 * n.toNat + base.toNat := by omega\n    have : 4 * i.toNat < base.toNat + 4 * n.toNat := by omega\n    omega\n  have hsum_lt : base.toNat + 4 * i.toNat < 2 ^ 64 := by\n    have : base.toNat + 4 * i.toNat ≤ base.toNat + 4 * n.toNat := by omega\n    omega\n  have h4n_lt : 4 * n.toNat < 2 ^ 64 := by\n    have : base.toNat + 4 * n.toNat < 2 ^ 64 := hfit\n    omega\n  have h4i_toNat : (4 * i).toNat = 4 * i.toNat := by\n    have h := BitVec.toNat_mul (4 : BitVec 64) i\n    simp [BitVec.toNat_ofNat] at h\n    rw [h]\n    rw [Nat.mod_eq_of_lt h4i_lt]\n  have h4n_toNat : (4 * n).toNat = 4 * n.toNat := by\n    have h := BitVec.toNat_mul (4 : BitVec 64) n\n    simp [BitVec.toNat_ofNat] at h\n    rw [h]\n    rw [Nat.mod_eq_of_lt h4n_lt]\n  have hbase_add_4i : (base + 4 * i).toNat = base.toNat + 4 * i.toNat := by\n    have h := BitVec.toNat_add base (4 * i)\n    rw [h4i_toNat] at h\n    rw [h]\n    rw [Nat.mod_eq_of_lt hsum_lt]\n  have hbase_add_4n : (base + 4 * n).toNat = base.toNat + 4 * n.toNat := by\n    have h := BitVec.toNat_add base (4 * n)\n    rw [h4n_toNat] at h\n    rw [h]\n    have hlt : base.toNat + 4 * n.toNat < 2 ^ 64 := hfit\n    rw [Nat.mod_eq_of_lt hlt]\n  rw [hbase_add_4i]\n  constructor\n  · omega\n  · omega\n\nend GlimmerVerify.Bench\n```"
+    },
+    {
+      "role": "user",
+      "content": "Attempt 2 of 3 was rejected by Lean.\n\nerror at line 16, column 34:\nUnknown constant `BitVec.lt_iff_toNat_lt`\n\n   14 |     (hp1 : i < n) :\n   15 |     base.toNat ≤ (base + 4 * i).toNat ∧ (base + 4 * i).toNat + 4 ≤ base.toNat + 4 * n.toNat := by\n>> 16 |   have hi : i.toNat < n.toNat := (BitVec.lt_iff_toNat_lt).mp hp1\n   17 |   have h4i_lt_4n : 4 * i.toNat < 4 * n.toNat := by omega\n   18 |   have h4i_lt : 4 * i.toNat < 2 ^ 64 := by\n\nerror at line 31, column 8:\nInvalid rewrite argument: Expected an equality or iff proof or definition name, but `h` is a proof of\n  True\n\n   29 |     have h := BitVec.toNat_mul (4 : BitVec 64) i\n   30 |     simp [BitVec.toNat_ofNat] at h\n>> 31 |     rw [h]\n   32 |     rw [Nat.mod_eq_of_lt h4i_lt]\n   33 |   have h4n_toNat : (4 * n).toNat = 4 * n.toNat := by\n\nerror at line 36, column 8:\nInvalid rewrite argument: Expected an equality or iff proof or definition name, but `h` is a proof of\n  True\n\n   34 |     have h := BitVec.toNat_mul (4 : BitVec 64) n\n   35 |     simp [BitVec.toNat_ofNat] at h\n>> 36 |     rw [h]\n   37 |     rw [Nat.mod_eq_of_lt h4n_lt]\n   38 |   have hbase_add_4i : (base + 4 * i).toNat = base.toNat + 4 * i.toNat := by\n\naudit: `GlimmerVerify.Bench.ptx_bounds_bitvec` depends on non-standard axioms: sorryAx\n\nReply with the corrected complete file in a single ```lean block."
+    },
+    {
+      "role": "assistant",
+      "content": "```lean\nimport GlimmerVerify.PagedKVProofs\n\n/-!\nB02: the predicated access over machine words.\n\n`base`, `n` and the lane index `i` are 64-bit registers (`BitVec 64`); `+` and `*` wrap and\n`i < n` is the unsigned comparison of `setp.lt.u64`. If the buffer fits in the address space,\nthe wrapped address of a guarded lane still lies inside the buffer.\n-/\n\nnamespace GlimmerVerify.Bench\n\ntheorem ptx_bounds_bitvec (base n i : BitVec 64) (hfit : base.toNat + 4 * n.toNat < 2 ^ 64)\n    (hp1 : i < n) :\n    base.toNat ≤ (base + 4 * i).toNat ∧ (base + 4 * i).toNat + 4 ≤ base.toNat + 4 * n.toNat := by\n  have hi : i.toNat < n.toNat := by\n    have h := BitVec.toNat_lt_toNat hp1\n    exact h\n  have h4i_lt_4n : 4 * i.toNat < 4 * n.toNat := by omega\n  have h4i_lt : 4 * i.toNat < 2 ^ 64 := by\n    have : 4 * i.toNat < base.toNat + 4 * n.toNat := by omega\n    omega\n  have hsum_lt : base.toNat + 4 * i.toNat < 2 ^ 64 := by\n    have : base.toNat + 4 * i.toNat ≤ base.toNat + 4 * n.toNat := by omega\n    omega\n  have h4n_lt : 4 * n.toNat < 2 ^ 64 := by\n    have : base.toNat + 4 * n.toNat < 2 ^ 64 := hfit\n    omega\n  have h4i_toNat : (4 * i).toNat = 4 * i.toNat := by\n    simp [BitVec.toNat_mul, BitVec.toNat_ofNat]\n    rw [Nat.mod_eq_of_lt h4i_lt]\n  have h4n_toNat : (4 * n).toNat = 4 * n.toNat := by\n    simp [BitVec.toNat_mul, BitVec.toNat_ofNat]\n    rw [Nat.mod_eq_of_lt h4n_lt]\n  have hbase_add_4i : (base + 4 * i).toNat = base.toNat + 4 * i.toNat := by\n    simp [BitVec.toNat_add]\n    rw [h4i_toNat]\n    rw [Nat.mod_eq_of_lt hsum_lt]\n  have hbase_add_4n : (base + 4 * n).toNat = base.toNat + 4 * n.toNat := by\n    simp [BitVec.toNat_add]\n    rw [h4n_toNat]\n    have hlt : base.toNat + 4 * n.toNat < 2 ^ 64 := hfit\n    rw [Nat.mod_eq_of_lt hlt]\n  rw [hbase_add_4i]\n  constructor\n  · omega\n  · omega\n\nend GlimmerVerify.Bench\n```"
+    }
+  ],
+  "attempts": [
+    {
+      "attempt": 1,
+      "outcome": "lean_error",
+      "integrity_error": null,
+      "lean_errors": 3,
+      "lean_elapsed_s": 3.9532671999986633,
+      "ttft_s": 1.0706622000034258,
+      "prompt_tokens": 2530,
+      "cached_tokens": 1344,
+      "completion_tokens": 1833,
+      "finish_reason": "stop",
+      "reasoning_chars": 3467,
+      "response_id": "gen-1792508136-LPxUL6sZUPH6izCaxk6m",
+      "provider": "DeepInfra",
+      "cost_usd": 0.00260916,
+      "telemetry": {
+        "run_id": "20261020T145532Z_openrouter",
+        "task_id": "B02_ptx_bounds_bitvec",
+        "turn": 1,
+        "backend": "openrouter",
+        "server_kind": "openrouter",
+        "model": "meta/muse-glimmer-30b",
+        "outcome": "lean_error",
+        "ttft_s": 1.0706622000034258,
+        "itl_mean_s": 0.05376255367761967,
+        "itl_p50_s": 0.001720000000204891,
+        "itl_p95_s": 0.18854410000130883,
+        "tpot_s": 0.018760003220523493,
+        "e2e_s": 35.43898810000246,
+        "prompt_tokens": 2530,
+        "completion_tokens": 1833,
+        "cached_tokens": 1344,
+        "client_prefix_hit_rate": 0.5312252964426878,
+        "server_prefix_hit_rate": null,
+        "server_kv_cache_usage_peak": null,
+        "server_preemptions_delta": null,
+        "server_ttft_mean_s": null,
+        "lean_ok": false,
+        "lean_elapsed_s": 3.9532671999986633,
+        "lean_errors": 3,
+        "finish_reason": "stop",
+        "response_id": "gen-1792508136-LPxUL6sZUPH6izCaxk6m",
+        "served_model": "meta/muse-glimmer-30b",
+        "provider": "DeepInfra",
+        "cost_usd": 0.00260916
+      }
+    },
+    {
+      "attempt": 2,
+      "outcome": "lean_error",
+      "integrity_error": null,
+      "lean_errors": 3,
+      "lean_elapsed_s": 2.9874563999983366,
+      "ttft_s": 0.5188985999993747,
+      "prompt_tokens": 4028,
+      "cached_tokens": 2432,
+      "completion_tokens": 1959,
+      "finish_reason": "stop",
+      "reasoning_chars": 3569,
+      "response_id": "gen-1792508176-OXU55gGi8hPlJ3UfGM9L",
+      "provider": "DeepInfra",
+      "cost_usd": 0.00292688,
+      "telemetry": {
+        "run_id": "20261020T145532Z_openrouter",
+        "task_id": "B02_ptx_bounds_bitvec",
+        "turn": 2,
+        "backend": "openrouter",
+        "server_kind": "openrouter",
+        "model": "meta/muse-glimmer-30b",
+        "outcome": "lean_error",
+        "ttft_s": 0.5188985999993747,
+        "itl_mean_s": 0.04687290471842092,
+        "itl_p50_s": 0.001817799999116687,
+        "itl_p95_s": 0.20233340000049793,
+        "tpot_s": 0.015740218130746334,
+        "e2e_s": 31.338245700000698,
+        "prompt_tokens": 4028,
+        "completion_tokens": 1959,
+        "cached_tokens": 2432,
+        "client_prefix_hit_rate": 0.6037735849056604,
+        "server_prefix_hit_rate": null,
+        "server_kv_cache_usage_peak": null,
+        "server_preemptions_delta": null,
+        "server_ttft_mean_s": null,
+        "lean_ok": false,
+        "lean_elapsed_s": 2.9874563999983366,
+        "lean_errors": 3,
+        "finish_reason": "stop",
+        "response_id": "gen-1792508176-OXU55gGi8hPlJ3UfGM9L",
+        "served_model": "meta/muse-glimmer-30b",
+        "provider": "DeepInfra",
+        "cost_usd": 0.00292688
+      }
+    },
+    {
+      "attempt": 3,
+      "outcome": "lean_error",
+      "integrity_error": null,
+      "lean_errors": 5,
+      "lean_elapsed_s": 2.923725900000136,
+      "ttft_s": 0.6933965000025637,
+      "prompt_tokens": 5309,
+      "cached_tokens": 3904,
+      "completion_tokens": 702,
+      "finish_reason": "stop",
+      "reasoning_chars": 0,
+      "response_id": "gen-1792508210-fmKDk0Dk9K4h2LD344sb",
+      "provider": "DeepInfra",
+      "cost_usd": 0.00142006,
+      "telemetry": {
+        "run_id": "20261020T145532Z_openrouter",
+        "task_id": "B02_ptx_bounds_bitvec",
+        "turn": 3,
+        "backend": "openrouter",
+        "server_kind": "openrouter",
+        "model": "meta/muse-glimmer-30b",
+        "outcome": "lean_error",
+        "ttft_s": 0.6933965000025637,
+        "itl_mean_s": 0.0436364912568193,
+        "itl_p50_s": 0.0014114000005065463,
+        "itl_p95_s": 0.1541891000015312,
+        "tpot_s": 0.0114113864479278,
+        "e2e_s": 8.692778399999952,
+        "prompt_tokens": 5309,
+        "completion_tokens": 702,
+        "cached_tokens": 3904,
+        "client_prefix_hit_rate": 0.7353550574496138,
+        "server_prefix_hit_rate": null,
+        "server_kv_cache_usage_peak": null,
+        "server_preemptions_delta": null,
+        "server_ttft_mean_s": null,
+        "lean_ok": false,
+        "lean_elapsed_s": 2.923725900000136,
+        "lean_errors": 5,
+        "finish_reason": "stop",
+        "response_id": "gen-1792508210-fmKDk0Dk9K4h2LD344sb",
+        "served_model": "meta/muse-glimmer-30b",
+        "provider": "DeepInfra",
+        "cost_usd": 0.00142006
+      }
+    }
+  ]
+}

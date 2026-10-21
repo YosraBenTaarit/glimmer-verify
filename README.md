@@ -89,6 +89,10 @@ glimmer-verify/
 ├── scripts/
 │   ├── launch_vllm.sh                # compose (default) | --native | --down
 │   └── launch_sglang.sh
+├── experiments/
+│   ├── README.md                     # OpenRouter today → vLLM/SGLang Meta stack later
+│   └── protocols/                    # frozen factorial designs (memory × seed)
+├── results/                          # checked-in evaluation tables and raw run data
 ├── runs/                             # (generated) per-run CSV/JSON telemetry and transcripts
 └── plots/                            # (generated) ttft_vs_retry_turn.png, roofline_bandwidth_vs_compute.png, ...
 ```
@@ -157,24 +161,30 @@ make lean-bench    # checks every reference solution against its template with t
 ### E3: Agentic proof repair with prefix caching (C5, C6)
 
 ```bash
-# Laptop: OpenRouter
-BACKEND=openrouter python -m src.agent.proof_repair_agent --max-retries 8
+# Laptop: OpenRouter (same agent as the Meta stack; only the serving URL changes)
+BACKEND=openrouter python -m src.agent.proof_repair_agent --max-retries 8 --memory append
 
-# Cloud GPU: self-hosted, prefix caching on
+# Factorial: memory strategy × seed. Protocols live in experiments/protocols/.
+python -m src.experiments.matrix experiments/protocols/openrouter_scale.json --dry-run
+
+# Cloud GPU: official weights on vLLM with Automatic Prefix Caching
 bash scripts/launch_vllm.sh         # or: bash scripts/launch_sglang.sh; --native skips docker for the engine
-BACKEND=local_server LOCAL_SERVER_KIND=vllm python -m src.agent.proof_repair_agent
+BACKEND=local_server LOCAL_SERVER_KIND=vllm \
+  python -m src.experiments.matrix experiments/protocols/vllm_meta_stack.json
 ```
 
-Each task runs as one conversation:
+See [experiments/README.md](experiments/README.md) for the OpenRouter → vLLM/SGLang path and the three memory strategies (`append`, `last_error`, `drop_truncated`).
+
+Each task starts as one conversation:
 
 ```text
-[system: fixed contract + trusted library source]  ← identical across all tasks
+[system: fixed contract + trusted library source]  ← identical across all tasks  (stable prefix)
 [user:   task spec + source + template]            ← identical across retries of a task
 [assistant: attempt 1] [user: Lean diagnostics 1]
 [assistant: attempt 2] [user: Lean diagnostics 2] ...  up to 1 + MAX_RETRIES attempts
 ```
 
-Messages are only ever appended, and prompts contain no timestamps, absolute paths, or random IDs. Turn *k+1* therefore re-sends turn *k* as an exact prefix, and the server can serve it from cached KV blocks. The candidate is checked by `lake env lean` in three ways:
+In `append` mode messages are only ever appended, so turn *k+1* re-sends turn *k* as an exact prefix. `last_error` keeps the two-message prefix and replaces the failed suffix with the latest Lean diagnostic. Prompts contain no timestamps, absolute paths, or random IDs. The candidate is checked by `lake env lean` in three ways:
 
 1. **Template integrity.** Only the `sorry` holes may change, and the checked file is rebuilt from the template.
 2. **Diagnostics.** No errors and no `sorry` warnings.

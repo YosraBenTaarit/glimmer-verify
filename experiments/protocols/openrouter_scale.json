@@ -1,0 +1,19 @@
+{
+  "name": "openrouter_scale_v1",
+  "description": "OpenRouter proxy of Muse Glimmer 30B. Pin DeepInfra so prefix cache and quantization stay on one endpoint. This is the laptop-scale stand-in for the Meta stack: same agent, same prompts, same Lean checker.",
+  "tasks": [],
+  "shared": {
+    "max_tokens": 8192,
+    "reasoning_max_tokens": 6144,
+    "temperature": 0.2,
+    "top_p": 0.95,
+    "max_retries": 8,
+    "provider_order": "deepinfra",
+    "allow_fallbacks": true,
+    "model": "meta/muse-glimmer-30b"
+  },
+  "axes": {
+    "memory": ["append", "last_error", "drop_truncated"],
+    "seed": [1, 2, 3]
+  }
+}
