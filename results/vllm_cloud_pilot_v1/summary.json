@@ -1,0 +1,190 @@
+{
+  "runs": [
+    {
+      "run": "memory=append_seed=1",
+      "config": "append",
+      "seed": 1,
+      "commit": null,
+      "tasks": 1,
+      "proved": 1,
+      "first_try": 0,
+      "failed_first_try": 1,
+      "repaired": 1,
+      "repair_turns_mean": 2.0,
+      "attempts": 3,
+      "hit_rate_turn1": 0.0,
+      "hit_rate_turn2plus": 0.5494600431965443,
+      "cost_usd": 0,
+      "cost_per_proof_usd": 0.0,
+      "completion_tokens": 9320.0,
+      "causes": {
+        "lean_error": 2,
+        "proved": 1
+      },
+      "providers": {
+        "unknown": 3
+      },
+      "proved_tasks": {
+        "B01_ptx_bounds_no_wrap": 2
+      },
+      "all_tasks": [
+        "B01_ptx_bounds_no_wrap"
+      ]
+    },
+    {
+      "run": "memory=last_error_seed=1",
+      "config": "last_error",
+      "seed": 1,
+      "commit": null,
+      "tasks": 1,
+      "proved": 1,
+      "first_try": 1,
+      "failed_first_try": 0,
+      "repaired": 0,
+      "repair_turns_mean": null,
+      "attempts": 2,
+      "hit_rate_turn1": 0.9974434611602753,
+      "hit_rate_turn2plus": null,
+      "cost_usd": 0,
+      "cost_per_proof_usd": 0.0,
+      "completion_tokens": 7204.0,
+      "causes": {
+        "proved": 1,
+        "no_code_truncated": 1
+      },
+      "providers": {
+        "unknown": 2
+      },
+      "proved_tasks": {
+        "B01_ptx_bounds_no_wrap": 1
+      },
+      "all_tasks": [
+        "B01_ptx_bounds_no_wrap"
+      ]
+    }
+  ],
+  "aggregate": {
+    "append": {
+      "seeds": [
+        1
+      ],
+      "commits": [],
+      "proved": [
+        1.0,
+        0.0
+      ],
+      "first_try": [
+        0.0,
+        0.0
+      ],
+      "repaired": [
+        1.0,
+        0.0
+      ],
+      "repair_turns_mean": [
+        2.0,
+        0.0
+      ],
+      "hit_rate_turn1": [
+        0.0,
+        0.0
+      ],
+      "hit_rate_turn2plus": [
+        0.5494600431965443,
+        0.0
+      ],
+      "cost_usd": [
+        0.0,
+        0.0
+      ],
+      "cost_per_proof_usd": [
+        0.0,
+        0.0
+      ],
+      "attempts": [
+        3.0,
+        0.0
+      ],
+      "completion_tokens": [
+        9320.0,
+        0.0
+      ],
+      "repair_rate": [
+        1.0,
+        0.0
+      ],
+      "total_cost_usd": 0,
+      "causes": {
+        "lean_error": 2,
+        "proved": 1
+      },
+      "providers": {
+        "unknown": 3
+      },
+      "per_task_proved": {
+        "B01_ptx_bounds_no_wrap": 1
+      }
+    },
+    "last_error": {
+      "seeds": [
+        1
+      ],
+      "commits": [],
+      "proved": [
+        1.0,
+        0.0
+      ],
+      "first_try": [
+        1.0,
+        0.0
+      ],
+      "repaired": [
+        0.0,
+        0.0
+      ],
+      "repair_turns_mean": [
+        null,
+        null
+      ],
+      "hit_rate_turn1": [
+        0.9974434611602753,
+        0.0
+      ],
+      "hit_rate_turn2plus": [
+        null,
+        null
+      ],
+      "cost_usd": [
+        0.0,
+        0.0
+      ],
+      "cost_per_proof_usd": [
+        0.0,
+        0.0
+      ],
+      "attempts": [
+        2.0,
+        0.0
+      ],
+      "completion_tokens": [
+        7204.0,
+        0.0
+      ],
+      "repair_rate": [
+        null,
+        null
+      ],
+      "total_cost_usd": 0,
+      "causes": {
+        "proved": 1,
+        "no_code_truncated": 1
+      },
+      "providers": {
+        "unknown": 2
+      },
+      "per_task_proved": {
+        "B01_ptx_bounds_no_wrap": 1
+      }
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "run_id": "20261021T160124Z_vllm",
+  "backend": "local_server",
+  "server_kind": "vllm",
+  "model": "meta-models/Muse-Glimmer-30B",
+  "base_url": "http://127.0.0.1:8000/v1",
+  "provider_order": [],
+  "allow_fallbacks": true,
+  "temperature": 0.2,
+  "top_p": 0.95,
+  "max_tokens": 8192,
+  "reasoning_effort": null,
+  "reasoning_max_tokens": null,
+  "seed": 1,
+  "max_retries": 8,
+  "memory": "last_error",
+  "tasks": [
+    "B01_ptx_bounds_no_wrap",
+    "B02_ptx_bounds_bitvec",
+    "B03_physslot_in_bounds",
+    "B04_warp_coalesced_segment",
+    "B05_grid_stride_coverage",
+    "B06_isolation_bytes",
+    "B07_physslot_injective",
+    "B08_striped_allocator_isolated",
+    "A01_kernel_slot_sentinel",
+    "A02_gather_written_once"
+  ],
+  "protocol": "vllm_cloud_pilot_v1",
+  "cell": {
+    "memory": "last_error",
+    "seed": 1
+  },
+  "returncode": 1
+}

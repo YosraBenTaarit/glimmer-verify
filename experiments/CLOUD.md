@@ -58,6 +58,19 @@ bash scripts/cloud_vllm_pilot.sh
 Keep the OpenRouter 3-seed table as the “n=3, API proxy” result. The cloud
 pilot is the “same protocol, reference engine, n=1” confirmation.
 
+## What this run actually did (21 Oct 2026)
+
+Both cells **aborted on B02**. `--max-model-len 8192` rejected a repair prompt
+of 8193 tokens (`openai.BadRequestError`). B01 proved in each cell; vLLM APC
+and NVML traces are in [`results/vllm_cloud_pilot_v1/`](../results/vllm_cloud_pilot_v1/).
+Do not overwrite that folder. A 10-task rerun needs a longer context and an
+agent that continues after a 400 — that is a new protocol, documented in the
+results README.
+
+`scripts/cloud_vllm_pilot.sh` uses `set -e`, so a cell that does not prove
+every task also skips `compare_runs` and the tarball. Pack
+`runs/vllm_cloud_pilot_v1` by hand, then **terminate the pod**.
+
 ## If something fails
 
 - Architecture unsupported: `export VLLM_EXTRA_ARGS='--model-impl transformers'` and rerun.

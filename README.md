@@ -15,7 +15,7 @@
 | Object | 16-token paged KV indexer (C++17/CUDA) + Lean 4 models of bounds and isolation |
 | Agent | Muse Glimmer 30B writes/repairs Lean proofs from compiler diagnostics |
 | OpenRouter (n=3 seeds) | ~5/10 tasks proved; prefix-cache and cost logged; empty-reply collapse reproduced |
-| vLLM on official weights | in progress (A100 80GB cloud pilot) |
+| vLLM on official weights | A100 80GB served BF16 30B with APC; both cells aborted on B02 at the 8192 context cap ([`results/vllm_cloud_pilot_v1/`](results/vllm_cloud_pilot_v1/)) |
 | Scale | 12 benchmark tasks, 3 memory strategies, not a large-N paper yet |
 
 Raw tables: [`results/2026-10-20_muse-glimmer-30b/`](results/2026-10-20_muse-glimmer-30b/). Protocols: [`experiments/`](experiments/).

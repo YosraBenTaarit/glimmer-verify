@@ -103,7 +103,7 @@ def aggregate(runs: Sequence[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             providers.update(r["providers"])
         out[config] = {
             "seeds": [r["seed"] for r in rs],
-            "commits": sorted({r["commit"] for r in rs}),
+            "commits": sorted({r["commit"] for r in rs if r.get("commit")}),
             **{
                 key: _mean_sd([r[key] for r in rs])
                 for key in ("proved", "first_try", "repaired", "repair_turns_mean", "hit_rate_turn1",

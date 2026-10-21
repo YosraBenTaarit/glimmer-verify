@@ -1,0 +1,29 @@
+{
+  "tasks": 1,
+  "proved": 1,
+  "convergence_rate": 1.0,
+  "mean_attempts_to_proof": 2.0,
+  "attempts_histogram": {
+    "2": 1,
+    "unproved": 0
+  },
+  "turns": 3,
+  "client_prefix_hit_rate_turn1": 0.0,
+  "client_prefix_hit_rate_turn2plus": 0.5494600431965443,
+  "median_ttft_s_by_turn": {
+    "1": 3.54998111948953,
+    "2": 0.6038981709862128
+  },
+  "total_prompt_tokens": 9715.0,
+  "total_completion_tokens": 9320.0,
+  "total_cost_usd": 0,
+  "turns_by_provider": {
+    "unknown": 3
+  },
+  "run_id": "20261021T155516Z_vllm",
+  "backend": "local_server",
+  "server_kind": "vllm",
+  "model": "meta-models/Muse-Glimmer-30B",
+  "server_prefix_hit_rate_run": 0.2618630983015955,
+  "server_preemptions_run": 0.0
+}
