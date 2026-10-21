@@ -6,7 +6,7 @@ self-hosted vLLM/SGLang stack. What changes is **who serves Muse Glimmer 30B**.
 | Stage | Where the model runs | What you measure | Hardware |
 |---|---|---|---|
 | Now | OpenRouter → DeepInfra BF16 (`meta/muse-glimmer-30b`) | Proof rate, repair, client cache hits, cost | Laptop + API credit |
-| Next | vLLM or SGLang, official weights `meta-models/Muse-Glimmer-30B` | Same metrics **plus** Prometheus prefix-cache counters, KV usage, preemptions, NVML | T3 24 GB (4-bit) or T4 80 GB (BF16) |
+| Next | vLLM, official weights, **one A100 80GB** | Same metrics **plus** Prometheus prefix-cache counters | €20–30 cloud pilot: see [CLOUD.md](CLOUD.md) |
 | Meta stack | Same engine flags Meta publishes for APC / RadixAttention | Server-side hit rate vs. client `cached_tokens`; compare `append` vs `last_error` | Cluster |
 
 ## Memory strategies

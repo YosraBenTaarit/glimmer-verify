@@ -1,0 +1,16 @@
+{
+  "name": "vllm_cloud_pilot_v1",
+  "description": "Minimum vLLM run that still matches the Meta stack: official BF16 weights, Automatic Prefix Caching, one A100 80GB. Two cells only (append vs last_error, seed 1, original 10 tasks) so it fits a €20–30 budget. Unique measurement vs OpenRouter: Prometheus prefix-cache counters on the same machine as the agent.",
+  "tasks": ["B01", "B02", "B03", "B04", "B05", "B06", "B07", "B08", "A01", "A02"],
+  "shared": {
+    "max_tokens": 8192,
+    "reasoning_max_tokens": 6144,
+    "temperature": 0.2,
+    "top_p": 0.95,
+    "max_retries": 8
+  },
+  "axes": {
+    "memory": ["append", "last_error"],
+    "seed": [1]
+  }
+}
