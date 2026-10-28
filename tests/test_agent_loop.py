@@ -8,7 +8,14 @@ from pathlib import Path
 import pytest
 
 from src.agent import prompts
-from src.agent.glimmer_client import BackendConfig, ChatCompletionResult, ConfigError, load_dotenv_if_present
+from src.agent.glimmer_client import (
+    BackendConfig,
+    ChatCompletionResult,
+    ConfigError,
+    ContextOverflowError,
+    _is_context_overflow,
+    load_dotenv_if_present,
+)
 from src.agent.lean_checker import LeanCheckResult, LeanDiagnostic
 from src.agent.proof_repair_agent import ProofRepairAgent, load_manifest, view_messages
 from src.telemetry.metrics_collector import MetricsCollector
@@ -253,3 +260,37 @@ def test_dotenv_fallback_without_python_dotenv(tmp_path, monkeypatch):
     cfg = BackendConfig.from_env()
     assert cfg.api_key == "sk-test" and cfg.model == "openrouter/free"
     assert os.environ["GLIMMER_TEST_PRESET"] == "from_shell"
+
+
+def test_is_context_overflow():
+    class Exc(Exception):
+        status_code = 400
+
+    assert _is_context_overflow(Exc("This model's maximum context length is 8192 tokens"))
+    assert not _is_context_overflow(Exc("rate limited"))
+    other = Exception("maximum context length is 8192")
+    assert not _is_context_overflow(other)
+
+
+def test_context_overflow_skips_task_and_continues_cell(prompt_ctx):
+    tasks, _ = load_manifest(MANIFEST, ["B04", "B06"])
+    proved = lean_block(tasks[0].template.text.replace("sorry", "omega"))
+
+    class Client:
+        def __init__(self):
+            self.n = 0
+
+        def chat(self, messages):
+            self.n += 1
+            if self.n >= 2:
+                raise ContextOverflowError("This model's maximum context length is 8192 tokens")
+            return ChatCompletionResult(
+                content=proved, reasoning="", finish_reason="stop", response_id="r1",
+                prompt_tokens=10, completion_tokens=5, cached_tokens=0,
+                ttft_s=0.1, e2e_s=1.0, chunk_gaps_s=[0.02],
+            )
+
+    agent = ProofRepairAgent(Client(), FakeChecker(), prompt_ctx, max_retries=1)
+    results = agent.run(tasks)
+    assert results[0].proved and results[0].task_id == tasks[0].id
+    assert not results[1].proved and results[1].outcomes == ["context_overflow"]

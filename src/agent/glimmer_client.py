@@ -29,6 +29,10 @@ class ConfigError(ValueError):
     pass
 
 
+class ContextOverflowError(RuntimeError):
+    """The server rejected the prompt as longer than its context window (HTTP 400)."""
+
+
 def load_dotenv_if_present(path: str | os.PathLike[str] | None = None) -> None:
     """Load ``.env`` (repo root by default) without overriding variables already set."""
     dotenv_path = Path(path) if path is not None else Path(__file__).resolve().parents[2] / ".env"
@@ -229,6 +233,12 @@ def _get(obj: Any, name: str) -> Any:
     return value
 
 
+def _is_context_overflow(exc: BaseException) -> bool:
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    return status == 400 and ("maximum context length" in text or "context length" in text)
+
+
 def _reasoning_delta(delta: Any) -> str:
     # vLLM/SGLang reasoning parsers emit `reasoning_content`; OpenRouter emits `reasoning`.
     for name in ("reasoning_content", "reasoning"):
@@ -290,7 +300,12 @@ class GlimmerClient:
         provider: str | None = None
 
         t_start = time.perf_counter()
-        stream = self._client.chat.completions.create(**kwargs)
+        try:
+            stream = self._client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            if _is_context_overflow(exc):
+                raise ContextOverflowError(str(exc)) from exc
+            raise
         try:
             for chunk in stream:
                 now = time.perf_counter()

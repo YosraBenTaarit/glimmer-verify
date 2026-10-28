@@ -34,7 +34,14 @@ from pathlib import Path
 from typing import Any, Protocol, Sequence
 
 from . import prompts
-from .glimmer_client import BackendConfig, ChatCompletionResult, ConfigError, GlimmerClient, load_dotenv_if_present
+from .glimmer_client import (
+    BackendConfig,
+    ChatCompletionResult,
+    ConfigError,
+    ContextOverflowError,
+    GlimmerClient,
+    load_dotenv_if_present,
+)
 from .lean_checker import (
     CandidateCheck,
     LeanChecker,
@@ -308,7 +315,26 @@ class ProofRepairAgent:
             ctx = self.collector.begin_turn(task.id, attempt)
             self.collector.set_phase("generate")
             request = view_messages(messages, self.memory)
-            completion = self.client.chat(request)
+            try:
+                completion = self.client.chat(request)
+            except ContextOverflowError as exc:
+                self.collector.end_generation(ctx)
+                self.collector.set_phase("idle")
+                completion = ChatCompletionResult(
+                    content="", reasoning="", finish_reason="context_overflow",
+                    response_id=None, prompt_tokens=None, completion_tokens=0, cached_tokens=None,
+                    ttft_s=float("nan"), e2e_s=0.0, chunk_gaps_s=[],
+                )
+                check = CandidateCheck("context_overflow", integrity_error=str(exc))
+                self.collector.end_turn(ctx, completion, check)
+                result.attempts = attempt
+                result.outcomes.append("context_overflow")
+                transcript.append({
+                    "attempt": attempt, "outcome": "context_overflow",
+                    "integrity_error": str(exc), "finish_reason": "context_overflow",
+                })
+                self.log(f"[{task.id}] attempt {attempt}/{self.max_attempts}: context_overflow; skipping rest of task")
+                break
             self.collector.end_generation(ctx)
             messages.append({"role": "assistant", "content": completion.content})
 
@@ -378,7 +404,19 @@ class ProofRepairAgent:
         return result
 
     def run(self, tasks: Sequence[Task]) -> list[TaskResult]:
-        return [self.run_task(task) for task in tasks]
+        results: list[TaskResult] = []
+        for task in tasks:
+            try:
+                results.append(self.run_task(task))
+            except Exception as exc:
+                self.log(f"[{task.id}] aborted ({type(exc).__name__}: {exc}); continuing the cell")
+                result = TaskResult(task_id=task.id, mode=task.mode, proved=False, attempts=0, outcomes=["aborted"])
+                self.collector.record_task(
+                    task_id=task.id, mode=task.mode, proved=False, attempts=0,
+                    max_attempts=self.max_attempts, outcomes=["aborted"],
+                )
+                results.append(result)
+        return results
 
     def _task_dir(self, task_id: str) -> Path | None:
         if self.run_dir is None:

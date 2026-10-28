@@ -4,6 +4,11 @@ This is **not** a full paper-scale eval. It is the smallest run that still uses
 **official weights + vLLM Automatic Prefix Caching**, which OpenRouter cannot
 give you. Two cells: `append` vs `last_error`, seed 1, the original 10 tasks.
 
+The 21 Oct 2026 v1 run aborted on B02 at `--max-model-len 8192`. Do not repeat
+that protocol. The script now defaults to **v2** (32k context, cell continues
+after a 400). Keep [`results/vllm_cloud_pilot_v1/`](../results/vllm_cloud_pilot_v1/)
+and unpack a new tarball as `results/vllm_cloud_pilot_v2/`.
+
 I cannot rent the GPU for you. You pay RunPod (or Vast.ai) with your card,
 SSH in, run one script, download the tarball, **delete the pod**.
 

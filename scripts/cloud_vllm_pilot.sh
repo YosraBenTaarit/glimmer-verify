@@ -14,10 +14,11 @@ cd "$ROOT"
 
 MODEL_ID="${MODEL_ID:-meta-models/Muse-Glimmer-30B}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-meta-models/Muse-Glimmer-30B}"
-MAX_MODEL_LEN="${MAX_MODEL_LEN:-8192}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"
 GPU_MEM_UTIL="${GPU_MEM_UTIL:-0.90}"
 PORT="${PORT:-8000}"
-OUT="${OUT:-$ROOT/runs/vllm_cloud_pilot_v1}"
+PROTOCOL="${PROTOCOL:-$ROOT/experiments/protocols/vllm_cloud_pilot_v2.json}"
+OUT="${OUT:-$ROOT/runs/vllm_cloud_pilot_v2}"
 HEALTH_TIMEOUT_S="${HEALTH_TIMEOUT_S:-3600}"
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -73,10 +74,13 @@ export LOCAL_MODEL="$SERVED_MODEL_NAME"
 export LOCAL_METRICS_URL="http://127.0.0.1:${PORT}/metrics"
 export GLIMMER_NVML=on
 
-python -m src.experiments.matrix experiments/protocols/vllm_cloud_pilot.json --out "$OUT"
-python -m src.telemetry.compare_runs "$OUT" --json "$OUT/summary.json" | tee "$OUT/table.md"
+set +e
+python -m src.experiments.matrix "$PROTOCOL" --out "$OUT"
+set -e
+python -m src.telemetry.compare_runs "$OUT" --json "$OUT/summary.json" | tee "$OUT/table.md" || true
 
 tar -C "$ROOT/runs" -czf "$ROOT/vllm_cloud_pilot_results.tar.gz" "$(basename "$OUT")"
 echo
 echo "DONE. Download vllm_cloud_pilot_results.tar.gz then DESTROY this GPU pod."
 echo "Leaving it on burns ~\$1–2 per hour."
+echo "Keep results/vllm_cloud_pilot_v1/ on the laptop; unpack this tarball as results/vllm_cloud_pilot_v2/."
